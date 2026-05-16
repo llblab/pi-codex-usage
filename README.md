@@ -49,14 +49,13 @@ pi -e ./extensions/pi-codex-usage
 Example output:
 
 ```text
-Codex usage
-Source: Pi auth direct
-Plan: Plus
+Codex usage · Plus
+via Pi auth
 
-codex:
-  5h limit: [█████████████░░░░░░░] 64% left (36% used, resets 13:57)
-  weekly limit: [████████████░░░░░░░░] 62% left (38% used, resets 14:37)
-  Credits: not enabled
+codex
+  5h     [█████████████░░░░░░░] 64% left · 36% used · resets 13:57
+  weekly [████████████░░░░░░░░] 62% left · 38% used · resets 14:37
+  credits not enabled
 ```
 
 ## 📊 Statusline behavior
