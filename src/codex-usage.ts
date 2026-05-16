@@ -14,6 +14,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const STATUS_KEY = "codex-usage";
 const BAR_SEGMENTS = 20;
 const MAX_ERROR_BODY_CHARS = 600;
+const RESET_FOREGROUND = "\x1b[39m";
 
 type UsageSource = "pi-auth" | "codex-app-server";
 type PiModel = NonNullable<ExtensionContext["model"]>;
@@ -780,24 +781,33 @@ function mergeSnapshot(
 }
 
 export function formatCodexUsageReport(report: CodexUsageReport, cacheAgeMs?: number): string {
-	const title = report.planType ? `Codex usage · ${formatPlanType(report.planType)}` : "Codex usage";
-	const source = report.source === "pi-auth" ? "Pi auth" : "Codex app-server";
-	const lines = [
-		title,
-		`via ${source}${cacheAgeMs === undefined ? "" : ` · cached ${formatDuration(cacheAgeMs)} ago`}`,
-		"",
-	];
+	const lines = ["Codex usage"];
+	const source = report.source === "pi-auth" ? "Pi auth direct" : "Codex app-server";
+	lines.push(
+		`Source: ${source}${cacheAgeMs === undefined ? "" : ` (cached ${formatDuration(cacheAgeMs)} ago)`}`,
+	);
+	if (report.planType) lines.push(`Plan: ${formatPlanType(report.planType)}`);
+	lines.push("");
 
 	for (const snapshot of report.snapshots) {
 		const label = snapshot.limitName ?? snapshot.limitId;
-		lines.push(label);
-		if (snapshot.primary) lines.push(formatWindowLine(snapshot.primary, "5h"));
-		if (snapshot.secondary) lines.push(formatWindowLine(snapshot.secondary, "weekly"));
+		if (report.snapshots.length > 1 || !label.toLowerCase().includes("codex")) {
+			lines.push(`${label}:`);
+		}
+		if (snapshot.primary)
+			lines.push(
+				`  ${windowLabel(snapshot.primary, "5h")} limit: ${formatWindow(snapshot.primary)}`,
+			);
+		if (snapshot.secondary) {
+			lines.push(
+				`  ${windowLabel(snapshot.secondary, "weekly")} limit: ${formatWindow(snapshot.secondary)}`,
+			);
+		}
 		if (snapshot.credits && shouldShowCredits(snapshot.credits)) {
-			lines.push(`  credits ${formatCredits(snapshot.credits)}`);
+			lines.push(`  Credits: ${formatCredits(snapshot.credits)}`);
 		}
 		if (!snapshot.primary && !snapshot.secondary && !snapshot.credits) {
-			lines.push("  limits unavailable for this account");
+			lines.push("  Limits: not available for this account");
 		}
 	}
 
@@ -830,20 +840,18 @@ function showReport(
 		report,
 		fromCache ? Date.now() - report.capturedAt : undefined,
 	);
-	ctx.ui.notify(text, "info");
+	ctx.ui.notify(ctx.hasUI ? brightenInfoNotification(text) : text, "info");
 }
 
-function formatWindowLine(window: NormalizedRateLimitWindow, fallbackLabel: string): string {
-	const label = windowLabel(window, fallbackLabel).padEnd(6, " ");
-	return `  ${label} ${formatWindow(window)}`;
+function brightenInfoNotification(text: string): string {
+	return `${RESET_FOREGROUND}${text}`;
 }
 
 function formatWindow(window: NormalizedRateLimitWindow): string {
 	const used = clampPercent(window.usedPercent);
 	const remaining = 100 - used;
-	const parts = [`${progressBar(remaining)} ${remaining.toFixed(0)}% left`, `${used.toFixed(0)}% used`];
-	if (window.resetsAt) parts.push(`resets ${formatReset(window.resetsAt)}`);
-	return parts.join(" · ");
+	const reset = window.resetsAt ? `, resets ${formatReset(window.resetsAt)}` : "";
+	return `${progressBar(remaining)} ${remaining.toFixed(0)}% left (${used.toFixed(0)}% used${reset})`;
 }
 
 function progressBar(percentRemaining: number): string {
