@@ -49,14 +49,16 @@ pi -e ./extensions/pi-codex-usage
 Example output:
 
 ```text
-Codex usage
-Source: Pi auth direct
-Plan: Plus
+  >_ OpenAI Codex Usage
 
-codex:
-  5h limit: [█████████████░░░░░░░] 64% left (36% used, resets 13:57)
-  weekly limit: [████████████░░░░░░░░] 62% left (38% used, resets 14:37)
-  Credits: not enabled
+Visit https://chatgpt.com/codex/settings/usage for up-to-date
+information on rate limits and credits
+
+  5h limit:                    [█████████████░░░░░░░] 64% left (resets 13:57)
+  Weekly limit:                [████████████░░░░░░░░] 62% left (resets 14:37)
+  GPT-5.3-Codex-Spark limit:
+  5h limit:                    [████████████████████] 100% left (resets 19:16)
+  Weekly limit:                [████████████████████] 100% left (resets 00:10 on 21 May)
 ```
 
 ## 📊 Statusline behavior

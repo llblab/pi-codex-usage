@@ -12,7 +12,9 @@ const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const STATUS_KEY = "codex-usage";
+const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
 const BAR_SEGMENTS = 20;
+const LIMIT_VALUE_COLUMN = 29;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
 
@@ -780,34 +782,24 @@ function mergeSnapshot(
 	};
 }
 
-export function formatCodexUsageReport(report: CodexUsageReport, cacheAgeMs?: number): string {
-	const lines = ["Codex usage"];
-	const source = report.source === "pi-auth" ? "Pi auth direct" : "Codex app-server";
-	lines.push(
-		`Source: ${source}${cacheAgeMs === undefined ? "" : ` (cached ${formatDuration(cacheAgeMs)} ago)`}`,
-	);
-	if (report.planType) lines.push(`Plan: ${formatPlanType(report.planType)}`);
-	lines.push("");
+export function formatCodexUsageReport(report: CodexUsageReport, _cacheAgeMs?: number): string {
+	const lines = [
+		"  >_ OpenAI Codex Usage",
+		"",
+		`Visit ${USAGE_SETTINGS_URL} for up-to-date`,
+		"information on rate limits and credits",
+		"",
+	];
 
 	for (const snapshot of report.snapshots) {
 		const label = snapshot.limitName ?? snapshot.limitId;
-		if (report.snapshots.length > 1 || !label.toLowerCase().includes("codex")) {
-			lines.push(`${label}:`);
+		if (!isPrimaryCodexSnapshot(snapshot)) {
+			lines.push(`  ${label} limit:`);
 		}
-		if (snapshot.primary)
-			lines.push(
-				`  ${windowLabel(snapshot.primary, "5h")} limit: ${formatWindow(snapshot.primary)}`,
-			);
-		if (snapshot.secondary) {
-			lines.push(
-				`  ${windowLabel(snapshot.secondary, "weekly")} limit: ${formatWindow(snapshot.secondary)}`,
-			);
-		}
-		if (snapshot.credits && shouldShowCredits(snapshot.credits)) {
-			lines.push(`  Credits: ${formatCredits(snapshot.credits)}`);
-		}
-		if (!snapshot.primary && !snapshot.secondary && !snapshot.credits) {
-			lines.push("  Limits: not available for this account");
+		if (snapshot.primary) lines.push(formatWindowLine("5h limit:", snapshot.primary));
+		if (snapshot.secondary) lines.push(formatWindowLine("Weekly limit:", snapshot.secondary));
+		if (!snapshot.primary && !snapshot.secondary) {
+			lines.push("  Limits unavailable for this account");
 		}
 	}
 
@@ -847,11 +839,18 @@ function brightenInfoNotification(text: string): string {
 	return `${RESET_FOREGROUND}${text}`;
 }
 
+function isPrimaryCodexSnapshot(snapshot: NormalizedRateLimitSnapshot): boolean {
+	return snapshot.limitId.toLowerCase() === "codex";
+}
+
+function formatWindowLine(label: string, window: NormalizedRateLimitWindow): string {
+	return `  ${label.padEnd(LIMIT_VALUE_COLUMN)}${formatWindow(window)}`;
+}
+
 function formatWindow(window: NormalizedRateLimitWindow): string {
-	const used = clampPercent(window.usedPercent);
-	const remaining = 100 - used;
-	const reset = window.resetsAt ? `, resets ${formatReset(window.resetsAt)}` : "";
-	return `${progressBar(remaining)} ${remaining.toFixed(0)}% left (${used.toFixed(0)}% used${reset})`;
+	const remaining = 100 - clampPercent(window.usedPercent);
+	const reset = window.resetsAt ? ` (resets ${formatReset(window.resetsAt)})` : "";
+	return `${progressBar(remaining)} ${remaining.toFixed(0)}% left${reset}`;
 }
 
 function progressBar(percentRemaining: number): string {
@@ -859,26 +858,12 @@ function progressBar(percentRemaining: number): string {
 	return `[${"█".repeat(filled)}${"░".repeat(BAR_SEGMENTS - filled)}]`;
 }
 
-function windowLabel(window: NormalizedRateLimitWindow, fallback: string): string {
-	if (!window.windowMinutes) return fallback;
-	const mins = window.windowMinutes;
-	if (mins < 60) return `${mins}m`;
-	if (mins < 60 * 24) return `${Math.round(mins / 60)}h`;
-	if (mins === 60 * 24 * 7) return "weekly";
-	if (mins % (60 * 24) === 0) return `${Math.round(mins / (60 * 24))}d`;
-	return `${mins}m`;
-}
-
 function formatCredits(credits: NormalizedCredits): string {
-	if (!credits.hasCredits) return "not enabled";
-	if (credits.unlimited) return "unlimited";
+	if (!credits.hasCredits) return "no credits";
+	if (credits.unlimited) return "unlimited credits";
 	const balance = credits.balance?.trim();
-	if (!balance) return "available";
+	if (!balance) return "credits available";
 	return `${formatNumber(Number(balance), balance)} credits`;
-}
-
-function shouldShowCredits(_credits: NormalizedCredits): boolean {
-	return true;
 }
 
 function formatReset(epochSeconds: number): string {
@@ -886,10 +871,14 @@ function formatReset(epochSeconds: number): string {
 	if (Number.isNaN(reset.getTime())) return "at an unknown time";
 
 	const now = new Date();
-	const time = reset.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	const time = `${reset.getHours().toString().padStart(2, "0")}:${reset
+		.getMinutes()
+		.toString()
+		.padStart(2, "0")}`;
 	if (reset.toDateString() === now.toDateString()) return time;
-	const day = reset.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-	return `${time} on ${day}`;
+	const day = reset.getDate().toString();
+	const month = reset.toLocaleDateString(undefined, { month: "short" });
+	return `${time} on ${day} ${month}`;
 }
 
 function formatQueryErrors(errors: UsageQueryError[]): string {
