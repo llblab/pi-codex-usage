@@ -17,23 +17,23 @@ const BAR_SEGMENTS = 10;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
 const STATUS_LABEL_TEXT = "codex";
-const QUADRANT_CHARS = [
+const DUAL_BAR_CHARS = [
 	" ",
-	"▘",
-	"▝",
-	"▀",
-	"▖",
-	"▌",
-	"▞",
-	"▛",
-	"▗",
-	"▚",
-	"▐",
-	"▜",
-	"▄",
-	"▙",
-	"▟",
-	"█",
+	"𜹑",
+	"𜹒",
+	"𜹓",
+	"𜹠",
+	"𜹡",
+	"𜹢",
+	"𜹣",
+	"𜹰",
+	"𜹱",
+	"𜹲",
+	"𜹳",
+	"𜺀",
+	"𜺁",
+	"𜺂",
+	"𜺃",
 ];
 
 type UsageSource = "pi-auth" | "codex-app-server";
@@ -850,7 +850,7 @@ function formatDualLimitBar(
 		if (primaryParts >= rightPart) mask |= 2;
 		if (secondaryParts >= leftPart) mask |= 4;
 		if (secondaryParts >= rightPart) mask |= 8;
-		value += QUADRANT_CHARS[mask];
+		value += DUAL_BAR_CHARS[mask];
 	}
 	return value;
 }
