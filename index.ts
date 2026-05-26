@@ -22,6 +22,7 @@ const STATUS_MUTED_OPEN = "<muted>";
 const STATUS_MUTED_CLOSE = "</muted>";
 
 type UsageSource = "pi-auth" | "codex-app-server";
+type TimeoutHandle = ReturnType<typeof setTimeout> & { unref?: () => void };
 type PiModel = NonNullable<ExtensionContext["model"]>;
 export type CodexUsageModel = Pick<PiModel, "id" | "name" | "provider">;
 
@@ -133,8 +134,8 @@ type PendingRpc = {
 
 export default function codexUsage(pi: ExtensionAPI) {
 	let cache: CachedReport | undefined;
-	let statuslineClearTimer: ReturnType<typeof setTimeout> | undefined;
-	let statuslineRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+	let statuslineClearTimer: TimeoutHandle | undefined;
+	let statuslineRefreshTimer: TimeoutHandle | undefined;
 	let statuslineRequestId = 0;
 
 	const clearStatuslineTimers = () => {
@@ -155,7 +156,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		statuslineClearTimer = setTimeout(() => {
 			ctx.ui.setStatus(STATUS_KEY, undefined);
 			statuslineClearTimer = undefined;
-		}, CACHE_TTL_MS);
+		}, CACHE_TTL_MS) as TimeoutHandle;
 		statuslineClearTimer.unref?.();
 	};
 
@@ -163,7 +164,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
 		statuslineRefreshTimer = setTimeout(() => {
 			void refreshCurrentCodexUsageStatusline(ctx, true);
-		}, CACHE_TTL_MS);
+		}, CACHE_TTL_MS) as TimeoutHandle;
 		statuslineRefreshTimer.unref?.();
 	};
 

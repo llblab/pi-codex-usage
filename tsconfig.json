@@ -4,9 +4,8 @@
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"strict": true,
-		"types": ["node"],
 		"noEmit": true,
 		"skipLibCheck": true
 	},
-	"include": ["index.ts"]
+	"include": ["index.ts", "node-shim.d.ts"]
 }
