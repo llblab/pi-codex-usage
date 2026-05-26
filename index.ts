@@ -17,6 +17,24 @@ const BAR_SEGMENTS = 10;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
 const STATUS_LABEL_TEXT = "codex";
+const QUADRANT_CHARS = [
+	" ",
+	"▘",
+	"▝",
+	"▀",
+	"▖",
+	"▌",
+	"▞",
+	"▛",
+	"▗",
+	"▚",
+	"▐",
+	"▜",
+	"▄",
+	"▙",
+	"▟",
+	"█",
+];
 
 type UsageSource = "pi-auth" | "codex-app-server";
 type TimeoutHandle = ReturnType<typeof setTimeout> & { unref?: () => void };
@@ -765,14 +783,11 @@ export function formatCodexUsageStatusline(
 	const snapshot = selectPrimaryCodexSnapshot(report);
 	if (!snapshot) return formatStatuslineText(ctx, "n/a");
 
-	const parts: string[] = [];
-	if (snapshot.primary)
-		parts.push(`${formatRemainingPercent(snapshot.primary)} 5h`);
-	if (snapshot.secondary)
-		parts.push(`${formatRemainingPercent(snapshot.secondary)} wk`);
-	if (parts.length === 0 && snapshot.credits)
-		parts.push(formatCredits(snapshot.credits));
-	return formatStatuslineText(ctx, parts.join(" "));
+	if (!snapshot.primary && !snapshot.secondary) return formatStatuslineText(ctx, "n/a");
+	return formatStatuslineText(
+		ctx,
+		`[${formatDualLimitBar(snapshot.primary, snapshot.secondary)}]`,
+	);
 }
 
 function formatStatuslineText(ctx: ExtensionContext, value: string): string {
@@ -817,7 +832,36 @@ function normalizedUsageKey(value: string | undefined): string | undefined {
 }
 
 function formatRemainingPercent(window: NormalizedRateLimitWindow): string {
-	return `${(100 - clampPercent(window.usedPercent)).toFixed(0)}%`;
+	return `${remainingPercent(window).toFixed(0)}%`;
+}
+
+function formatDualLimitBar(
+	primary: NormalizedRateLimitWindow | undefined,
+	secondary: NormalizedRateLimitWindow | undefined,
+): string {
+	const primaryParts = filledTenths(primary);
+	const secondaryParts = filledTenths(secondary);
+	let value = "";
+	for (let index = 0; index < 5; index++) {
+		const leftPart = index * 2 + 1;
+		const rightPart = leftPart + 1;
+		let mask = 0;
+		if (primaryParts >= leftPart) mask |= 1;
+		if (primaryParts >= rightPart) mask |= 2;
+		if (secondaryParts >= leftPart) mask |= 4;
+		if (secondaryParts >= rightPart) mask |= 8;
+		value += QUADRANT_CHARS[mask];
+	}
+	return value;
+}
+
+function filledTenths(window: NormalizedRateLimitWindow | undefined): number {
+	if (!window) return 0;
+	return Math.round(remainingPercent(window) / 10);
+}
+
+function remainingPercent(window: NormalizedRateLimitWindow): number {
+	return 100 - clampPercent(window.usedPercent);
 }
 
 function showReport(
