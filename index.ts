@@ -11,6 +11,7 @@ const CODEX_PROVIDER_ID = "openai-codex";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const REFRESH_INTERVAL_MS = 30 * 1000;
+const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "codex-usage";
 const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
 const BAR_SEGMENTS = 10;
@@ -149,13 +150,16 @@ type PendingRpc = {
 export default function codexUsage(pi: ExtensionAPI) {
 	let cache: CachedReport | undefined;
 	let failedRefreshes = 0;
+	let statuslineBlinkTimer: TimeoutHandle | undefined;
 	let statuslineClearTimer: TimeoutHandle | undefined;
 	let statuslineRefreshTimer: TimeoutHandle | undefined;
 	let statuslineRequestId = 0;
 
 	const clearStatuslineTimers = () => {
+		if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
 		if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
 		if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
+		statuslineBlinkTimer = undefined;
 		statuslineClearTimer = undefined;
 		statuslineRefreshTimer = undefined;
 	};
@@ -186,14 +190,27 @@ export default function codexUsage(pi: ExtensionAPI) {
 	const setUsageStatusline = (
 		ctx: ExtensionContext,
 		report: CodexUsageReport,
-		options: { autoRefresh: boolean; model: CodexUsageModel | undefined },
+		options: {
+			autoRefresh: boolean;
+			blink: boolean;
+			model: CodexUsageModel | undefined;
+		},
 	) => {
+		if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
 		if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
+		statuslineBlinkTimer = undefined;
 		statuslineClearTimer = undefined;
-		ctx.ui.setStatus(
-			STATUS_KEY,
-			formatCodexUsageStatusline(report, ctx, options.model),
-		);
+		const text = formatCodexUsageStatusline(report, ctx, options.model);
+		if (options.blink) {
+			ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
+			statuslineBlinkTimer = setTimeout(() => {
+				ctx.ui.setStatus(STATUS_KEY, text);
+				statuslineBlinkTimer = undefined;
+			}, REDRAW_BLINK_MS) as TimeoutHandle;
+			statuslineBlinkTimer.unref?.();
+		} else {
+			ctx.ui.setStatus(STATUS_KEY, text);
+		}
 		if (options.autoRefresh) scheduleStatuslineRefresh(ctx);
 		else scheduleTemporaryStatuslineClear(ctx);
 	};
@@ -215,7 +232,11 @@ export default function codexUsage(pi: ExtensionAPI) {
 				? cache
 				: undefined;
 		if (cached && !force) {
-			setUsageStatusline(ctx, cached.report, { autoRefresh: true, model });
+			setUsageStatusline(ctx, cached.report, {
+				autoRefresh: true,
+				blink: false,
+				model,
+			});
 			return;
 		}
 
@@ -237,7 +258,11 @@ export default function codexUsage(pi: ExtensionAPI) {
 
 		failedRefreshes = 0;
 		cache = { createdAt: Date.now(), report: result.report };
-		setUsageStatusline(ctx, result.report, { autoRefresh: true, model });
+		setUsageStatusline(ctx, result.report, {
+			autoRefresh: true,
+			blink: cache !== undefined,
+			model,
+		});
 	};
 
 	pi.on("session_start", (_event, ctx) => {
@@ -797,6 +822,10 @@ export function formatCodexUsageStatusline(
 function formatStatuslineText(ctx: ExtensionContext, value: string): string {
 	const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
 	return `${label} ${ctx.ui.theme.fg("muted", value)}`;
+}
+
+function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
+	return formatStatuslineText(ctx, "[     ]");
 }
 
 function formatStatuslineProblem(
