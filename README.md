@@ -12,7 +12,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 
 ## Features
 
-- Automatically refreshes every 30 seconds while the active Pi model uses `openai-codex`
+- Shows an empty statusline bar immediately, then refreshes every 30 seconds while the active Pi model uses `openai-codex`
 - Statusline output stays compact, with the `codex` label accented and the values muted
 - Additional returned buckets, including Spark-specific limits, are ignored
 - Pi OpenAI Codex provider auth is used first
