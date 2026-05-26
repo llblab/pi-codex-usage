@@ -7,7 +7,6 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-const COMMAND_NAME = "codex-status";
 const CODEX_PROVIDER_ID = "openai-codex";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -25,7 +24,6 @@ type PiModel = NonNullable<ExtensionContext["model"]>;
 export type CodexUsageModel = Pick<PiModel, "id" | "name" | "provider">;
 
 type QueryUsageOptions = {
-	refresh: boolean;
 	timeoutMs: number;
 };
 
@@ -209,7 +207,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		}
 
 		if (!result.ok) {
-			ctx.ui.setStatus(STATUS_KEY, formatStatuslineText(ctx, "error"));
+			ctx.ui.setStatus(STATUS_KEY, formatStatuslineProblem(ctx, result.errors));
 			scheduleStatuslineRefresh(ctx);
 			return;
 		}
@@ -217,50 +215,6 @@ export default function codexUsage(pi: ExtensionAPI) {
 		cache = { createdAt: Date.now(), report: result.report };
 		setUsageStatusline(ctx, result.report, { autoRefresh: true, model });
 	};
-
-	pi.registerCommand(COMMAND_NAME, {
-		description: "Show Codex ChatGPT subscription usage and rate-limit windows",
-		handler: async (args, ctx) => {
-			const options = parseArgs(args);
-			if (!options.ok) {
-				ctx.ui.notify(options.error, "warning");
-				return;
-			}
-
-			const cached =
-				cache && Date.now() - cache.createdAt < CACHE_TTL_MS
-					? cache
-					: undefined;
-			if (cached && !options.value.refresh) {
-				setUsageStatusline(ctx, cached.report, {
-					autoRefresh: isOpenAICodexModel(ctx.model),
-					model: ctx.model,
-				});
-				showReport(ctx, cached.report, true);
-				return;
-			}
-
-			let keepStatusline = false;
-			ctx.ui.setStatus(STATUS_KEY, formatStatuslineText(ctx, "..."));
-			try {
-				const result = await queryUsage(ctx, options.value);
-				if (!result.ok) {
-					ctx.ui.notify(formatQueryErrors(result.errors), "error");
-					return;
-				}
-
-				cache = { createdAt: Date.now(), report: result.report };
-				setUsageStatusline(ctx, result.report, {
-					autoRefresh: isOpenAICodexModel(ctx.model),
-					model: ctx.model,
-				});
-				keepStatusline = true;
-				showReport(ctx, result.report, false);
-			} finally {
-				if (!keepStatusline) ctx.ui.setStatus(STATUS_KEY, undefined);
-			}
-		},
-	});
 
 	pi.on("session_start", (_event, ctx) => {
 		if (isOpenAICodexModel(ctx.model))
@@ -283,46 +237,6 @@ export default function codexUsage(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => clearUsageStatusline(ctx));
-}
-
-function parseArgs(
-	args: string,
-): { ok: true; value: QueryUsageOptions } | { ok: false; error: string } {
-	const tokens = args.trim().split(/\s+/).filter(Boolean);
-	let refresh = false;
-	let timeoutMs = DEFAULT_TIMEOUT_MS;
-
-	for (let index = 0; index < tokens.length; index++) {
-		const token = tokens[index];
-		if (token === "--refresh") {
-			refresh = true;
-			continue;
-		}
-		if (token === "--timeout") {
-			const rawValue = tokens[index + 1];
-			if (!rawValue)
-				return {
-					ok: false,
-					error: "Usage: /codex-status [--refresh] [--timeout seconds]",
-				};
-			const parsed = Number(rawValue);
-			if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 120) {
-				return {
-					ok: false,
-					error: "--timeout must be a number of seconds between 1 and 120.",
-				};
-			}
-			timeoutMs = Math.round(parsed * 1000);
-			index += 1;
-			continue;
-		}
-		return {
-			ok: false,
-			error: `Unknown option: ${token}. Usage: /codex-status [--refresh] [--timeout seconds]`,
-		};
-	}
-
-	return { ok: true, value: { refresh, timeoutMs } };
 }
 
 function isOpenAICodexModel(
@@ -862,6 +776,28 @@ export function formatCodexUsageStatusline(
 function formatStatuslineText(ctx: ExtensionContext, value: string): string {
 	const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
 	return `${label} ${ctx.ui.theme.fg("muted", value)}`;
+}
+
+function formatStatuslineProblem(
+	ctx: ExtensionContext,
+	errors: UsageQueryError[],
+): string {
+	const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
+	const value = isUnavailable(errors)
+		? ctx.ui.theme.fg("muted", "n/a")
+		: ctx.ui.theme.fg("error", "error");
+	return `${label} ${value}`;
+}
+
+function isUnavailable(errors: UsageQueryError[]): boolean {
+	return errors.some((error) => {
+		const message = error.message.toLowerCase();
+		return (
+			message.includes("no pi openai codex subscription auth") ||
+			message.includes("no displayable rate-limit windows") ||
+			message.includes("returned no displayable rate-limit windows")
+		);
+	});
 }
 
 function selectPrimaryCodexSnapshot(

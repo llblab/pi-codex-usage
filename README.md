@@ -1,17 +1,18 @@
 # pi-codex-usage
 
-Minimal Pi extension for showing primary ChatGPT Codex usage limits.
+Minimal zero-configuration Pi extension for showing primary ChatGPT Codex usage limits in the statusline.
 
 This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-codex-usage`](https://github.com/narumiruna/pi-extensions/tree/main/extensions/pi-codex-usage). It keeps the auth and quota-fetching path, but intentionally narrows the interface to the primary Codex 5-hour and weekly windows.
 
 ## Features
 
-- `/codex-status` shows the primary Codex 5-hour and weekly limits
+- Automatically refreshes while the active Pi model uses `openai-codex`
 - Statusline output stays compact, with the `codex` label accented and the values muted
 - Additional returned buckets, including Spark-specific limits, are ignored
 - Pi OpenAI Codex provider auth is used first
 - Codex CLI app-server remains available as a fallback
-- Results are cached briefly to avoid repeated backend calls
+- Missing auth or subscription is shown as `n/a`, not as an error
+- Network/provider failures are shown as `error`
 
 ## Install
 
@@ -27,28 +28,24 @@ From git:
 pi install git:github.com/llblab/pi-codex-usage
 ```
 
-## Usage
+## Statusline
 
-```text
-/codex-status
-/codex-status --refresh
-/codex-status --timeout 30
-```
-
-Example notification:
-
-```text
-Codex usage
-Usage page: https://chatgpt.com/codex/settings/usage
-
-5h: 64% [██████░░░░] reset 13:57
-week: 62% [██████░░░░] reset 14:37
-```
-
-Example statusline:
+Normal usage:
 
 ```text
 codex 64% 5h 62% wk
+```
+
+Unavailable because Codex auth or subscription quota is not available:
+
+```text
+codex n/a
+```
+
+Runtime failure, such as a network or provider error:
+
+```text
+codex error
 ```
 
 ## Auth
