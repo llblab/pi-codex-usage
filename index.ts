@@ -1,11 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
-import type {
-	ExtensionAPI,
-	ExtensionCommandContext,
-	ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const CODEX_PROVIDER_ID = "openai-codex";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -13,10 +9,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const REFRESH_INTERVAL_MS = 30 * 1000;
 const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "codex-usage";
-const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
-const BAR_SEGMENTS = 10;
 const MAX_ERROR_BODY_CHARS = 600;
-const RESET_FOREGROUND = "\x1b[39m";
 const STATUS_LABEL_TEXT = "codex";
 const DUAL_BAR_CHARS = [
 	" ",
@@ -62,36 +55,21 @@ type UsageQueryError = {
 };
 
 export type CodexUsageReport = {
-	source: UsageSource;
-	capturedAt: number;
-	planType?: string;
 	snapshots: NormalizedRateLimitSnapshot[];
 };
 
 export type NormalizedRateLimitSnapshot = {
 	limitId: string;
-	limitName?: string;
 	primary?: NormalizedRateLimitWindow;
 	secondary?: NormalizedRateLimitWindow;
-	credits?: NormalizedCredits;
 };
 
 export type NormalizedRateLimitWindow = {
 	usedPercent: number;
-	windowMinutes?: number;
-	resetsAt?: number;
-};
-
-export type NormalizedCredits = {
-	hasCredits: boolean;
-	unlimited: boolean;
-	balance?: string;
 };
 
 type RateLimitStatusPayload = {
-	plan_type?: unknown;
 	rate_limit?: unknown;
-	credits?: unknown;
 };
 
 type BackendRateLimitDetails = {
@@ -101,14 +79,6 @@ type BackendRateLimitDetails = {
 
 type BackendWindowSnapshot = {
 	used_percent?: unknown;
-	limit_window_seconds?: unknown;
-	reset_at?: unknown;
-};
-
-type BackendCreditsSnapshot = {
-	has_credits?: unknown;
-	unlimited?: unknown;
-	balance?: unknown;
 };
 
 type AppServerRateLimitResponse = {
@@ -117,23 +87,12 @@ type AppServerRateLimitResponse = {
 
 type AppServerRateLimitSnapshot = {
 	limitId?: unknown;
-	limitName?: unknown;
 	primary?: unknown;
 	secondary?: unknown;
-	credits?: unknown;
-	planType?: unknown;
 };
 
 type AppServerWindowSnapshot = {
 	usedPercent?: unknown;
-	windowDurationMins?: unknown;
-	resetsAt?: unknown;
-};
-
-type AppServerCreditsSnapshot = {
-	hasCredits?: unknown;
-	unlimited?: unknown;
-	balance?: unknown;
 };
 
 type RpcResponse = {
@@ -604,51 +563,31 @@ class CodexAppServerClient {
 
 export function normalizeBackendPayload(
 	payload: RateLimitStatusPayload,
-	capturedAt: number,
-	source: UsageSource,
+	_capturedAt: number,
+	_source: UsageSource,
 ): CodexUsageReport {
-	const snapshots: NormalizedRateLimitSnapshot[] = [];
-	const planType = asString(payload.plan_type);
-	const primary = normalizeBackendSnapshot(
-		"codex",
-		undefined,
-		payload.rate_limit,
-		payload.credits,
-	);
-	if (primary) snapshots.push(primary);
-
-	if (snapshots.length === 0) {
+	const snapshot = normalizeBackendSnapshot("codex", payload.rate_limit);
+	if (!snapshot) {
 		throw new Error(
 			"Codex usage endpoint returned no displayable rate-limit windows.",
 		);
 	}
-
-	return { source, capturedAt, planType, snapshots };
+	return { snapshots: [snapshot] };
 }
 
 function normalizeBackendSnapshot(
 	limitId: string,
-	limitName: string | undefined,
 	rateLimit: unknown,
-	credits: unknown,
 ): NormalizedRateLimitSnapshot | undefined {
-	if (rateLimit === null || rateLimit === undefined) {
-		const normalizedCredits = normalizeBackendCredits(credits);
-		return normalizedCredits
-			? { limitId, limitName, credits: normalizedCredits }
-			: undefined;
-	}
-
+	if (rateLimit === null || rateLimit === undefined) return undefined;
 	const details = assertObject(
 		rateLimit,
 		"rate limit",
 	) as BackendRateLimitDetails;
 	const primary = normalizeBackendWindow(details.primary_window);
 	const secondary = normalizeBackendWindow(details.secondary_window);
-	const normalizedCredits = normalizeBackendCredits(credits);
-
-	if (!primary && !secondary && !normalizedCredits) return undefined;
-	return { limitId, limitName, primary, secondary, credits: normalizedCredits };
+	if (!primary && !secondary) return undefined;
+	return { limitId, primary, secondary };
 }
 
 function normalizeBackendWindow(
@@ -661,32 +600,12 @@ function normalizeBackendWindow(
 	) as BackendWindowSnapshot;
 	const usedPercent = asNumber(window.used_percent);
 	if (usedPercent === undefined) return undefined;
-	const limitSeconds = asNumber(window.limit_window_seconds);
-	const resetsAt = asNumber(window.reset_at);
-	return {
-		usedPercent,
-		windowMinutes:
-			limitSeconds && limitSeconds > 0
-				? Math.ceil(limitSeconds / 60)
-				: undefined,
-		resetsAt,
-	};
-}
-
-function normalizeBackendCredits(
-	value: unknown,
-): NormalizedCredits | undefined {
-	if (value === null || value === undefined) return undefined;
-	const credits = assertObject(value, "credits") as BackendCreditsSnapshot;
-	const hasCredits = asBoolean(credits.has_credits);
-	const unlimited = asBoolean(credits.unlimited);
-	if (hasCredits === undefined || unlimited === undefined) return undefined;
-	return { hasCredits, unlimited, balance: asString(credits.balance) };
+	return { usedPercent };
 }
 
 export function normalizeAppServerResponse(
 	response: AppServerRateLimitResponse,
-	capturedAt: number,
+	_capturedAt: number,
 ): CodexUsageReport {
 	const snapshots: NormalizedRateLimitSnapshot[] = [];
 	const addSnapshot = (raw: unknown, fallbackId: string) => {
@@ -710,17 +629,7 @@ export function normalizeAppServerResponse(
 		);
 	}
 
-	const planType = asAppServerPlanType(response.rateLimits);
-	return { source: "codex-app-server", capturedAt, planType, snapshots };
-}
-
-function asAppServerPlanType(raw: unknown): string | undefined {
-	if (raw === null || raw === undefined) return undefined;
-	const snapshot = assertObject(
-		raw,
-		"app-server rate-limit snapshot",
-	) as AppServerRateLimitSnapshot;
-	return asString(snapshot.planType);
+	return { snapshots };
 }
 
 function normalizeAppServerSnapshot(
@@ -733,12 +642,10 @@ function normalizeAppServerSnapshot(
 		"app-server rate-limit snapshot",
 	) as AppServerRateLimitSnapshot;
 	const limitId = asString(snapshot.limitId) ?? fallbackId;
-	const limitName = asString(snapshot.limitName);
 	const primary = normalizeAppServerWindow(snapshot.primary);
 	const secondary = normalizeAppServerWindow(snapshot.secondary);
-	const credits = normalizeAppServerCredits(snapshot.credits);
-	if (!primary && !secondary && !credits) return undefined;
-	return { limitId, limitName, primary, secondary, credits };
+	if (!primary && !secondary) return undefined;
+	return { limitId, primary, secondary };
 }
 
 function normalizeAppServerWindow(
@@ -751,25 +658,7 @@ function normalizeAppServerWindow(
 	) as AppServerWindowSnapshot;
 	const usedPercent = asNumber(window.usedPercent);
 	if (usedPercent === undefined) return undefined;
-	return {
-		usedPercent,
-		windowMinutes: asNumber(window.windowDurationMins),
-		resetsAt: asNumber(window.resetsAt),
-	};
-}
-
-function normalizeAppServerCredits(
-	value: unknown,
-): NormalizedCredits | undefined {
-	if (value === null || value === undefined) return undefined;
-	const credits = assertObject(
-		value,
-		"app-server credits",
-	) as AppServerCreditsSnapshot;
-	const hasCredits = asBoolean(credits.hasCredits);
-	const unlimited = asBoolean(credits.unlimited);
-	if (hasCredits === undefined || unlimited === undefined) return undefined;
-	return { hasCredits, unlimited, balance: asString(credits.balance) };
+	return { usedPercent };
 }
 
 function mergeSnapshot(
@@ -778,30 +667,9 @@ function mergeSnapshot(
 ): NormalizedRateLimitSnapshot {
 	return {
 		limitId: right.limitId || left.limitId,
-		limitName: right.limitName ?? left.limitName,
 		primary: right.primary ?? left.primary,
 		secondary: right.secondary ?? left.secondary,
-		credits: right.credits ?? left.credits,
 	};
-}
-
-export function formatCodexUsageReport(
-	report: CodexUsageReport,
-	_cacheAgeMs?: number,
-): string {
-	const snapshot = selectPrimaryCodexSnapshot(report);
-	const lines = ["Codex usage", `Usage page: ${USAGE_SETTINGS_URL}`, ""];
-	if (!snapshot) {
-		lines.push("Limits unavailable");
-		return lines.join("\n");
-	}
-
-	if (snapshot.primary) lines.push(formatWindowLine("5h", snapshot.primary));
-	if (snapshot.secondary)
-		lines.push(formatWindowLine("week", snapshot.secondary));
-	if (!snapshot.primary && !snapshot.secondary)
-		lines.push("Limits unavailable");
-	return lines.join("\n");
 }
 
 export function formatCodexUsageStatusline(
@@ -864,10 +732,6 @@ function normalizedUsageKey(value: string | undefined): string | undefined {
 	return key || undefined;
 }
 
-function formatRemainingPercent(window: NormalizedRateLimitWindow): string {
-	return `${remainingPercent(window).toFixed(0)}%`;
-}
-
 function formatDualLimitBar(
 	primary: NormalizedRateLimitWindow | undefined,
 	secondary: NormalizedRateLimitWindow | undefined,
@@ -897,95 +761,10 @@ function remainingPercent(window: NormalizedRateLimitWindow): number {
 	return 100 - clampPercent(window.usedPercent);
 }
 
-function showReport(
-	ctx: ExtensionCommandContext,
-	report: CodexUsageReport,
-	fromCache: boolean,
-): void {
-	const text = formatCodexUsageReport(
-		report,
-		fromCache ? Date.now() - report.capturedAt : undefined,
-	);
-	ctx.ui.notify(ctx.hasUI ? brightenInfoNotification(text) : text, "info");
-}
-
-function brightenInfoNotification(text: string): string {
-	return `${RESET_FOREGROUND}${text}`;
-}
-
 function isPrimaryCodexSnapshot(
 	snapshot: NormalizedRateLimitSnapshot,
 ): boolean {
-	return (
-		normalizedUsageKey(snapshot.limitId) === "codex" ||
-		normalizedUsageKey(snapshot.limitName) === "codex"
-	);
-}
-
-function formatWindowLine(
-	label: string,
-	window: NormalizedRateLimitWindow,
-): string {
-	return `${label}: ${formatWindow(window)}`;
-}
-
-function formatWindow(window: NormalizedRateLimitWindow): string {
-	const remaining = 100 - clampPercent(window.usedPercent);
-	const reset = window.resetsAt ? ` reset ${formatReset(window.resetsAt)}` : "";
-	return `${remaining.toFixed(0)}% ${progressBar(remaining)}${reset}`;
-}
-
-function progressBar(percentRemaining: number): string {
-	const filled = Math.round(
-		(clampPercent(percentRemaining) / 100) * BAR_SEGMENTS,
-	);
-	return `[${"█".repeat(filled)}${"░".repeat(BAR_SEGMENTS - filled)}]`;
-}
-
-function formatCredits(credits: NormalizedCredits): string {
-	if (!credits.hasCredits) return "no credits";
-	if (credits.unlimited) return "unlimited credits";
-	const balance = credits.balance?.trim();
-	if (!balance) return "credits available";
-	return `${formatNumber(Number(balance), balance)} credits`;
-}
-
-function formatReset(epochSeconds: number): string {
-	const reset = new Date(epochSeconds * 1000);
-	if (Number.isNaN(reset.getTime())) return "at an unknown time";
-
-	const now = new Date();
-	const time = `${reset.getHours().toString().padStart(2, "0")}:${reset
-		.getMinutes()
-		.toString()
-		.padStart(2, "0")}`;
-	if (reset.toDateString() === now.toDateString()) return time;
-	const day = reset.getDate().toString();
-	const month = reset.toLocaleDateString(undefined, { month: "short" });
-	return `${time} on ${day} ${month}`;
-}
-
-function formatQueryErrors(errors: UsageQueryError[]): string {
-	const lines = ["Unable to read Codex usage."];
-	for (const error of errors) {
-		const source =
-			error.source === "pi-auth"
-				? "Pi auth direct"
-				: "Codex app-server fallback";
-		lines.push(`- ${source}: ${error.message}`);
-	}
-	lines.push("");
-	lines.push(
-		"Tip: use a Pi OpenAI Codex model or run /login for OpenAI ChatGPT Plus/Pro. If Pi auth is unavailable, install Codex CLI and run codex login for the fallback.",
-	);
-	return lines.join("\n");
-}
-
-function formatNumber(value: number, fallback: string): string {
-	if (!Number.isFinite(value)) return fallback;
-	return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(
-		value,
-	);
+	return normalizedUsageKey(snapshot.limitId) === "codex";
 }
 
 function clampPercent(value: number): number {
@@ -1029,10 +808,6 @@ function asNumber(value: unknown): number | undefined {
 		return Number.isFinite(parsed) ? parsed : undefined;
 	}
 	return undefined;
-}
-
-function asBoolean(value: unknown): boolean | undefined {
-	return typeof value === "boolean" ? value : undefined;
 }
 
 function hasHeader(headers: Record<string, string>, name: string): boolean {
