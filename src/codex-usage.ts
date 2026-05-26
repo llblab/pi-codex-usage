@@ -1,10 +1,11 @@
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 
 const COMMAND_NAME = "codex-status";
 const CODEX_PROVIDER_ID = "openai-codex";
