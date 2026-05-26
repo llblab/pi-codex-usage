@@ -1,7 +1,7 @@
 {
-	"name": "@narumitw/pi-codex-usage",
-	"version": "0.1.36",
-	"description": "Pi extension that shows Codex ChatGPT subscription usage without requiring Codex CLI.",
+	"name": "pi-codex-usage",
+	"version": "0.1.0",
+	"description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits.",
 	"type": "module",
 	"license": "MIT",
 	"private": false,
@@ -36,7 +36,6 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/narumiruna/pi-extensions",
-		"directory": "extensions/pi-codex-usage"
+		"url": "https://github.com/llblab/pi-codex-usage"
 	}
 }
