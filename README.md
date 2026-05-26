@@ -7,7 +7,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 ## Features
 
 - `/codex-status` shows the primary Codex 5-hour and weekly limits
-- Statusline output stays compact, with the `codex` label rendered as Pi accent text
+- Statusline output stays compact, with the `codex` label accented and the values muted
 - Additional returned buckets, including Spark-specific limits, are ignored
 - Pi OpenAI Codex provider auth is used first
 - Codex CLI app-server remains available as a fallback
@@ -48,7 +48,7 @@ week: 62% [██████░░░░] reset 14:37
 Example statusline:
 
 ```text
-<accent>codex</accent> 64% 5h 62% wk
+<accent>codex</accent> <muted>64% 5h 62% wk</muted>
 ```
 
 ## Auth

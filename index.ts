@@ -18,6 +18,8 @@ const BAR_SEGMENTS = 10;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
 const STATUS_LABEL = "<accent>codex</accent>";
+const STATUS_MUTED_OPEN = "<muted>";
+const STATUS_MUTED_CLOSE = "</muted>";
 
 type UsageSource = "pi-auth" | "codex-app-server";
 type PiModel = NonNullable<ExtensionContext["model"]>;
@@ -199,7 +201,10 @@ export default function codexUsage(pi: ExtensionAPI) {
 			return;
 		}
 
-		ctx.ui.setStatus(STATUS_KEY, `${STATUS_LABEL} ...`);
+		ctx.ui.setStatus(
+			STATUS_KEY,
+			`${STATUS_LABEL} ${STATUS_MUTED_OPEN}...${STATUS_MUTED_CLOSE}`,
+		);
 		const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
 		if (requestId !== statuslineRequestId) return;
 		if (!isOpenAICodexModel(ctx.model)) {
@@ -208,7 +213,10 @@ export default function codexUsage(pi: ExtensionAPI) {
 		}
 
 		if (!result.ok) {
-			ctx.ui.setStatus(STATUS_KEY, `${STATUS_LABEL} error`);
+			ctx.ui.setStatus(
+				STATUS_KEY,
+				`${STATUS_LABEL} ${STATUS_MUTED_OPEN}error${STATUS_MUTED_CLOSE}`,
+			);
 			scheduleStatuslineRefresh(ctx);
 			return;
 		}
@@ -240,7 +248,10 @@ export default function codexUsage(pi: ExtensionAPI) {
 			}
 
 			let keepStatusline = false;
-			ctx.ui.setStatus(STATUS_KEY, `${STATUS_LABEL} ...`);
+			ctx.ui.setStatus(
+				STATUS_KEY,
+				`${STATUS_LABEL} ${STATUS_MUTED_OPEN}...${STATUS_MUTED_CLOSE}`,
+			);
 			try {
 				const result = await queryUsage(ctx, options.value);
 				if (!result.ok) {
@@ -845,16 +856,17 @@ export function formatCodexUsageStatusline(
 	_model?: CodexUsageModel,
 ): string {
 	const snapshot = selectPrimaryCodexSnapshot(report);
-	if (!snapshot) return `${STATUS_LABEL} n/a`;
+	if (!snapshot)
+		return `${STATUS_LABEL} ${STATUS_MUTED_OPEN}n/a${STATUS_MUTED_CLOSE}`;
 
-	const parts = [STATUS_LABEL];
+	const parts: string[] = [];
 	if (snapshot.primary)
 		parts.push(`${formatRemainingPercent(snapshot.primary)} 5h`);
 	if (snapshot.secondary)
 		parts.push(`${formatRemainingPercent(snapshot.secondary)} wk`);
-	if (parts.length === 1 && snapshot.credits)
+	if (parts.length === 0 && snapshot.credits)
 		parts.push(formatCredits(snapshot.credits));
-	return parts.join(" ");
+	return `${STATUS_LABEL} ${STATUS_MUTED_OPEN}${parts.join(" ")}${STATUS_MUTED_CLOSE}`;
 }
 
 function selectPrimaryCodexSnapshot(
