@@ -17,7 +17,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 - Additional returned buckets, including Spark-specific limits, are ignored
 - Pi OpenAI Codex provider auth is used first
 - Codex CLI app-server remains available as a fallback
-- Missing auth or subscription is shown as `n/a`, not as an error
+- Missing auth, subscription, plan, or quota windows are shown as `n/a`, not as an error
 - Successful updates briefly redraw the bar without changing its width
 - Network/provider failures keep the last good bar briefly, then show `error`
 - No commands or configuration are required

@@ -713,7 +713,16 @@ function isUnavailable(errors: UsageQueryError[]): boolean {
 		return (
 			message.includes("no pi openai codex subscription auth") ||
 			message.includes("no displayable rate-limit windows") ||
-			message.includes("returned no displayable rate-limit windows")
+			message.includes("returned no displayable rate-limit windows") ||
+			message.includes("returned 401") ||
+			message.includes("returned 403") ||
+			message.includes("unauthorized") ||
+			message.includes("forbidden") ||
+			message.includes("subscription") ||
+			message.includes("no active plan") ||
+			message.includes("plan unavailable") ||
+			message.includes("quota unavailable") ||
+			message.includes("rate limits unavailable")
 		);
 	});
 }
