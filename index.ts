@@ -148,6 +148,7 @@ type PendingRpc = {
 
 export default function codexUsage(pi: ExtensionAPI) {
 	let cache: CachedReport | undefined;
+	let failedRefreshes = 0;
 	let statuslineClearTimer: TimeoutHandle | undefined;
 	let statuslineRefreshTimer: TimeoutHandle | undefined;
 	let statuslineRequestId = 0;
@@ -218,7 +219,6 @@ export default function codexUsage(pi: ExtensionAPI) {
 			return;
 		}
 
-		ctx.ui.setStatus(STATUS_KEY, formatStatuslineText(ctx, "..."));
 		const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
 		if (requestId !== statuslineRequestId) return;
 		if (!isOpenAICodexModel(ctx.model)) {
@@ -227,11 +227,15 @@ export default function codexUsage(pi: ExtensionAPI) {
 		}
 
 		if (!result.ok) {
-			ctx.ui.setStatus(STATUS_KEY, formatStatuslineProblem(ctx, result.errors));
+			failedRefreshes += 1;
+			if (!cache || failedRefreshes >= 5) {
+				ctx.ui.setStatus(STATUS_KEY, formatStatuslineProblem(ctx, result.errors));
+			}
 			scheduleStatuslineRefresh(ctx);
 			return;
 		}
 
+		failedRefreshes = 0;
 		cache = { createdAt: Date.now(), report: result.report };
 		setUsageStatusline(ctx, result.report, { autoRefresh: true, model });
 	};
