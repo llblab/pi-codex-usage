@@ -48,7 +48,7 @@ week: 62% [██████░░░░] reset 14:37
 Example statusline:
 
 ```text
-<accent>codex</accent> <muted>64% 5h 62% wk</muted>
+codex 64% 5h 62% wk
 ```
 
 ## Auth

@@ -17,9 +17,7 @@ const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
 const BAR_SEGMENTS = 10;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
-const STATUS_LABEL = "<accent>codex</accent>";
-const STATUS_MUTED_OPEN = "<muted>";
-const STATUS_MUTED_CLOSE = "</muted>";
+const STATUS_LABEL_TEXT = "codex";
 
 type UsageSource = "pi-auth" | "codex-app-server";
 type TimeoutHandle = ReturnType<typeof setTimeout> & { unref?: () => void };
@@ -177,7 +175,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		statuslineClearTimer = undefined;
 		ctx.ui.setStatus(
 			STATUS_KEY,
-			formatCodexUsageStatusline(report, options.model),
+			formatCodexUsageStatusline(report, ctx, options.model),
 		);
 		if (options.autoRefresh) scheduleStatuslineRefresh(ctx);
 		else scheduleTemporaryStatuslineClear(ctx);
@@ -202,10 +200,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 			return;
 		}
 
-		ctx.ui.setStatus(
-			STATUS_KEY,
-			`${STATUS_LABEL} ${STATUS_MUTED_OPEN}...${STATUS_MUTED_CLOSE}`,
-		);
+		ctx.ui.setStatus(STATUS_KEY, formatStatuslineText(ctx, "..."));
 		const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
 		if (requestId !== statuslineRequestId) return;
 		if (!isOpenAICodexModel(ctx.model)) {
@@ -214,10 +209,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		}
 
 		if (!result.ok) {
-			ctx.ui.setStatus(
-				STATUS_KEY,
-				`${STATUS_LABEL} ${STATUS_MUTED_OPEN}error${STATUS_MUTED_CLOSE}`,
-			);
+			ctx.ui.setStatus(STATUS_KEY, formatStatuslineText(ctx, "error"));
 			scheduleStatuslineRefresh(ctx);
 			return;
 		}
@@ -249,10 +241,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 			}
 
 			let keepStatusline = false;
-			ctx.ui.setStatus(
-				STATUS_KEY,
-				`${STATUS_LABEL} ${STATUS_MUTED_OPEN}...${STATUS_MUTED_CLOSE}`,
-			);
+			ctx.ui.setStatus(STATUS_KEY, formatStatuslineText(ctx, "..."));
 			try {
 				const result = await queryUsage(ctx, options.value);
 				if (!result.ok) {
@@ -854,11 +843,11 @@ export function formatCodexUsageReport(
 
 export function formatCodexUsageStatusline(
 	report: CodexUsageReport,
+	ctx: ExtensionContext,
 	_model?: CodexUsageModel,
 ): string {
 	const snapshot = selectPrimaryCodexSnapshot(report);
-	if (!snapshot)
-		return `${STATUS_LABEL} ${STATUS_MUTED_OPEN}n/a${STATUS_MUTED_CLOSE}`;
+	if (!snapshot) return formatStatuslineText(ctx, "n/a");
 
 	const parts: string[] = [];
 	if (snapshot.primary)
@@ -867,7 +856,12 @@ export function formatCodexUsageStatusline(
 		parts.push(`${formatRemainingPercent(snapshot.secondary)} wk`);
 	if (parts.length === 0 && snapshot.credits)
 		parts.push(formatCredits(snapshot.credits));
-	return `${STATUS_LABEL} ${STATUS_MUTED_OPEN}${parts.join(" ")}${STATUS_MUTED_CLOSE}`;
+	return formatStatuslineText(ctx, parts.join(" "));
+}
+
+function formatStatuslineText(ctx: ExtensionContext, value: string): string {
+	const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
+	return `${label} ${ctx.ui.theme.fg("muted", value)}`;
 }
 
 function selectPrimaryCodexSnapshot(
