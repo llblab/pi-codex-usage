@@ -17,6 +17,7 @@ const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
 const BAR_SEGMENTS = 10;
 const MAX_ERROR_BODY_CHARS = 600;
 const RESET_FOREGROUND = "\x1b[39m";
+const STATUS_LABEL = "<accent>codex</accent>";
 
 type UsageSource = "pi-auth" | "codex-app-server";
 type PiModel = NonNullable<ExtensionContext["model"]>;
@@ -198,7 +199,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 			return;
 		}
 
-		ctx.ui.setStatus(STATUS_KEY, "codex ...");
+		ctx.ui.setStatus(STATUS_KEY, `${STATUS_LABEL} ...`);
 		const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
 		if (requestId !== statuslineRequestId) return;
 		if (!isOpenAICodexModel(ctx.model)) {
@@ -207,7 +208,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		}
 
 		if (!result.ok) {
-			ctx.ui.setStatus(STATUS_KEY, "codex error");
+			ctx.ui.setStatus(STATUS_KEY, `${STATUS_LABEL} error`);
 			scheduleStatuslineRefresh(ctx);
 			return;
 		}
@@ -239,7 +240,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 			}
 
 			let keepStatusline = false;
-			ctx.ui.setStatus(STATUS_KEY, "codex ...");
+			ctx.ui.setStatus(STATUS_KEY, `${STATUS_LABEL} ...`);
 			try {
 				const result = await queryUsage(ctx, options.value);
 				if (!result.ok) {
@@ -844,9 +845,9 @@ export function formatCodexUsageStatusline(
 	_model?: CodexUsageModel,
 ): string {
 	const snapshot = selectPrimaryCodexSnapshot(report);
-	if (!snapshot) return "codex n/a";
+	if (!snapshot) return `${STATUS_LABEL} n/a`;
 
-	const parts = ["codex"];
+	const parts = [STATUS_LABEL];
 	if (snapshot.primary)
 		parts.push(`${formatRemainingPercent(snapshot.primary)} 5h`);
 	if (snapshot.secondary)
