@@ -10,7 +10,7 @@ import type {
 const CODEX_PROVIDER_ID = "openai-codex";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const REFRESH_INTERVAL_MS = 30 * 1000;
 const STATUS_KEY = "codex-usage";
 const USAGE_SETTINGS_URL = "https://chatgpt.com/codex/settings/usage";
 const BAR_SEGMENTS = 10;
@@ -152,7 +152,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		statuslineClearTimer = setTimeout(() => {
 			ctx.ui.setStatus(STATUS_KEY, undefined);
 			statuslineClearTimer = undefined;
-		}, CACHE_TTL_MS) as TimeoutHandle;
+		}, REFRESH_INTERVAL_MS) as TimeoutHandle;
 		statuslineClearTimer.unref?.();
 	};
 
@@ -160,7 +160,7 @@ export default function codexUsage(pi: ExtensionAPI) {
 		if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
 		statuslineRefreshTimer = setTimeout(() => {
 			void refreshCurrentCodexUsageStatusline(ctx, true);
-		}, CACHE_TTL_MS) as TimeoutHandle;
+		}, REFRESH_INTERVAL_MS) as TimeoutHandle;
 		statuslineRefreshTimer.unref?.();
 	};
 
@@ -192,7 +192,9 @@ export default function codexUsage(pi: ExtensionAPI) {
 		const requestId = statuslineRequestId + 1;
 		statuslineRequestId = requestId;
 		const cached =
-			cache && Date.now() - cache.createdAt < CACHE_TTL_MS ? cache : undefined;
+			cache && Date.now() - cache.createdAt < REFRESH_INTERVAL_MS
+				? cache
+				: undefined;
 		if (cached && !force) {
 			setUsageStatusline(ctx, cached.report, { autoRefresh: true, model });
 			return;
