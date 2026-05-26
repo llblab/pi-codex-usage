@@ -13,6 +13,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 - Codex CLI app-server remains available as a fallback
 - Missing auth or subscription is shown as `n/a`, not as an error
 - Network/provider failures are shown as `error`
+- No commands or configuration are required
 
 ## Install
 
@@ -56,18 +57,6 @@ The extension tries usage sources in this order:
 2. `codex app-server --listen stdio://`
 
 OpenAI API keys are not ChatGPT Codex subscription auth and do not expose these quotas.
-
-## Package
-
-The package exposes its Pi extension through `package.json`:
-
-```json
-{
-  "pi": {
-    "extensions": ["./index.ts"]
-  }
-}
-```
 
 ## License
 
