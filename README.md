@@ -4,6 +4,12 @@ Minimal zero-configuration Pi extension for showing primary ChatGPT Codex usage 
 
 This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-codex-usage`](https://github.com/narumiruna/pi-extensions/tree/main/extensions/pi-codex-usage). It keeps the auth and quota-fetching path, but intentionally narrows the interface to the primary Codex 5-hour and weekly windows.
 
+## Start Here
+
+- [Agent Notes](./AGENTS.md)
+- [Backlog](./BACKLOG.md)
+- [Changelog](./CHANGELOG.md)
+
 ## Features
 
 - Automatically refreshes every 30 seconds while the active Pi model uses `openai-codex`

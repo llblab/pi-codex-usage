@@ -33,6 +33,9 @@
   "files": [
     "index.ts",
     "README.md",
+    "AGENTS.md",
+    "BACKLOG.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "pi": {
