@@ -693,7 +693,7 @@ function formatStatuslineText(ctx: ExtensionContext, value: string): string {
 }
 
 function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
-	return formatStatuslineText(ctx, "[     ]");
+	return formatStatuslineText(ctx, "[\u00a0\u00a0\u00a0\u00a0\u00a0]");
 }
 
 function formatStatuslineProblem(
