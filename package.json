@@ -1,6 +1,6 @@
 {
   "name": "@llblab/pi-codex-usage",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": false,
   "description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits.",
   "keywords": [
@@ -36,12 +36,14 @@
     "AGENTS.md",
     "BACKLOG.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "banner.png"
   ],
   "pi": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "image": "https://github.com/llblab/pi-codex-usage/raw/main/banner.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",

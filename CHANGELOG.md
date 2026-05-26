@@ -1,5 +1,6 @@
 # Changelog
 
+- `0.3.4` Added package banner metadata and README hero image. Impact: Pi/package listings can show the Codex Usage banner while npm packages include the image asset.
 - `Fork baseline` Imported `extensions/pi-codex-usage` from `narumiruna/pi-extensions` as a standalone `@llblab/pi-codex-usage` package. Impact: the extension can be installed and maintained independently.
 - `Minimal statusline` Removed command-driven report output and narrowed the extension to a zero-configuration statusline widget. Impact: runtime behavior is automatic while `openai-codex` is active.
 - `Primary quota focus` Ignored additional returned buckets such as Spark-specific limits. Impact: the statusline only represents primary Codex 5-hour and weekly quota windows.

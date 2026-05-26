@@ -1,6 +1,8 @@
 # pi-codex-usage
 
-Minimal zero-configuration Pi extension for showing primary ChatGPT Codex usage limits in the statusline.
+> Minimal zero-configuration Pi extension for showing primary ChatGPT Codex usage limits in the statusline
+
+![Codex Usage](./banner.png)
 
 This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-codex-usage`](https://github.com/narumiruna/pi-extensions/tree/main/extensions/pi-codex-usage). It keeps the auth and quota-fetching path, but intentionally narrows the interface to the primary Codex 5-hour and weekly windows.
 
