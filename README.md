@@ -67,7 +67,7 @@ The package exposes its Pi extension through `package.json`:
 ```json
 {
   "pi": {
-    "extensions": ["./src/codex-usage.ts"]
+    "extensions": ["./index.ts"]
   }
 }
 ```

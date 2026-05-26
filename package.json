@@ -1,6 +1,6 @@
 {
   "name": "@llblab/pi-codex-usage",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": false,
   "description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits.",
   "keywords": [
@@ -25,19 +25,19 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "check": "node --experimental-strip-types -e \"await import('./src/codex-usage.ts'); console.log('pi-codex-usage: extension import ok')\"",
+    "check": "node --experimental-strip-types -e \"await import('./index.ts'); console.log('pi-codex-usage: extension import ok')\"",
     "typecheck": "tsc --noEmit",
     "pack:dry": "npm pack --dry-run",
     "validate": "npm run typecheck && npm run check && npm run pack:dry"
   },
   "files": [
-    "src",
+    "index.ts",
     "README.md",
     "LICENSE"
   ],
   "pi": {
     "extensions": [
-      "./src/codex-usage.ts"
+      "./index.ts"
     ]
   },
   "peerDependencies": {
