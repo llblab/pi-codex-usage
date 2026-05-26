@@ -1,41 +1,50 @@
 {
-	"name": "pi-codex-usage",
-	"version": "0.1.0",
-	"description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits.",
-	"type": "module",
-	"license": "MIT",
-	"private": false,
-	"keywords": [
-		"pi-package",
-		"pi-extension",
-		"pi",
-		"codex",
-		"usage",
-		"status"
-	],
-	"files": [
-		"src",
-		"README.md",
-		"LICENSE"
-	],
-	"pi": {
-		"extensions": [
-			"./src/codex-usage.ts"
-		]
-	},
-	"scripts": {
-		"check": "biome check . && npm run typecheck",
-		"format": "biome check --write .",
-		"typecheck": "tsc --noEmit"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "2.4.14",
-		"@earendil-works/pi-coding-agent": "0.74.0",
-		"@types/node": "25.6.0",
-		"typescript": "6.0.3"
-	},
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/llblab/pi-codex-usage"
-	}
+  "name": "@llblab/pi-codex-usage",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits.",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "codex",
+    "usage",
+    "status"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/llblab/pi-codex-usage.git"
+  },
+  "homepage": "https://github.com/llblab/pi-codex-usage",
+  "bugs": {
+    "url": "https://github.com/llblab/pi-codex-usage/issues"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "check": "node --experimental-strip-types -e \"await import('./src/codex-usage.ts'); console.log('pi-codex-usage: extension import ok')\"",
+    "typecheck": "tsc --noEmit",
+    "pack:dry": "npm pack --dry-run",
+    "validate": "npm run typecheck && npm run check && npm run pack:dry"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/codex-usage.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "latest"
+  }
 }
