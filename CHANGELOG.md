@@ -1,5 +1,6 @@
 # Changelog
 
+- `0.3.5` Refined the compact statusline bar with quadrant glyphs, darker bar coloring, and blink-on-segment-change behavior. Impact: Codex quota changes are easier to notice while routine refreshes stay visually stable.
 - `0.3.4` Added package banner metadata and README hero image. Impact: Pi/package listings can show the Codex Usage banner while npm packages include the image asset.
 - `Fork baseline` Imported `extensions/pi-codex-usage` from `narumiruna/pi-extensions` as a standalone `@llblab/pi-codex-usage` package. Impact: the extension can be installed and maintained independently.
 - `Minimal statusline` Removed command-driven report output and narrowed the extension to a zero-configuration statusline widget. Impact: runtime behavior is automatic while `openai-codex` is active.
