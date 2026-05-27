@@ -699,7 +699,7 @@ function formatReportBar(report: CodexUsageReport): string | undefined {
 
 function formatStatuslineText(ctx: ExtensionContext, value: string): string {
   const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
-  return `${label} ${ctx.ui.theme.fg("muted", value)}`;
+  return `${label} ${ctx.ui.theme.fg("dim", value)}`;
 }
 
 function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
