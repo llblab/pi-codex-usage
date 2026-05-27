@@ -222,11 +222,15 @@ export default function codexUsage(pi: ExtensionAPI) {
       return;
     }
 
+    const previousReport = cache?.report;
+    const blink = previousReport
+      ? formatReportBar(previousReport) !== formatReportBar(result.report)
+      : false;
     failedRefreshes = 0;
     cache = { createdAt: Date.now(), report: result.report };
     setUsageStatusline(ctx, result.report, {
       autoRefresh: true,
-      blink: cache !== undefined,
+      blink,
       model,
     });
   };
@@ -684,12 +688,13 @@ export function formatCodexUsageStatusline(
   ctx: ExtensionContext,
   _model?: CodexUsageModel,
 ): string {
-  const snapshot = selectPrimaryCodexSnapshot(report);
-  if (!snapshot) return formatStatuslineText(ctx, "n/a");
+  return formatStatuslineText(ctx, formatReportBar(report) ?? "n/a");
+}
 
-  if (!snapshot.primary && !snapshot.secondary)
-    return formatStatuslineText(ctx, "n/a");
-  return formatStatuslineText(ctx, formatDualLimitBar(snapshot.primary, snapshot.secondary));
+function formatReportBar(report: CodexUsageReport): string | undefined {
+  const snapshot = selectPrimaryCodexSnapshot(report);
+  if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
+  return formatDualLimitBar(snapshot.primary, snapshot.secondary);
 }
 
 function formatStatuslineText(ctx: ExtensionContext, value: string): string {

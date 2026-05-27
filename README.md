@@ -20,7 +20,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 - Pi OpenAI Codex provider auth is used first
 - Codex CLI app-server remains available as a fallback
 - Missing auth, subscription, plan, or quota windows are shown as `n/a`, not as an error
-- Successful updates briefly redraw the bar without changing its width
+- Successful updates briefly redraw the bar only when a ten-step segment changes
 - Network/provider failures keep the last good bar briefly, then show `error`
 - No commands or configuration are required
 
