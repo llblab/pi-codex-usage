@@ -14,8 +14,9 @@ const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "aa-codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
 const STATUS_LABEL_TEXT = "codex";
+const DUAL_BAR_WIDTH = 10;
 const DUAL_BAR_CHARS = [
-  " ",
+  "⠀",
   "▘",
   "▝",
   "▀",
@@ -713,10 +714,7 @@ function formatStatuslineBarText(ctx: ExtensionContext, bar: string): string {
 }
 
 function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
-  return formatStatuslineBarText(
-    ctx,
-    "\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0",
-  );
+  return formatStatuslineBarText(ctx, DUAL_BAR_CHARS[0].repeat(DUAL_BAR_WIDTH));
 }
 
 function formatStatuslineProblem(
@@ -771,7 +769,7 @@ function formatDualLimitBar(
   const primaryParts = filledTwentieths(primary);
   const secondaryParts = filledTwentieths(secondary);
   let value = "";
-  for (let index = 0; index < 10; index++) {
+  for (let index = 0; index < DUAL_BAR_WIDTH; index++) {
     const leftPart = index * 2 + 1;
     const rightPart = leftPart + 1;
     let mask = 0;
