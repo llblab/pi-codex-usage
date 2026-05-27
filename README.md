@@ -43,10 +43,10 @@ pi install git:github.com/llblab/pi-codex-usage
 Normal usage:
 
 ```text
-codex 𜺃𜺃𜹣𜹓𜹓
+codex ███▀▀
 ```
 
-The five-character bar encodes two ten-step limits at once: the top sextants are the 5-hour limit, and the bottom sextants are the weekly limit.
+The five-character bar encodes two ten-step limits at once: the top quadrants are the 5-hour limit, and the bottom quadrants are the weekly limit.
 
 Unavailable because Codex auth or subscription quota is not available:
 
