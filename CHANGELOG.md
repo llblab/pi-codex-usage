@@ -1,5 +1,6 @@
 # Changelog
 
+- `0.4.0` Expanded the dual statusline bar to ten glyphs with 20 steps per quota window, moved its status key near the start of the footer status order, and draws the bar on the themed selected background. Impact: 5-hour and weekly limits now move in 5% increments for 40 total discrete points while empty cells no longer blend into the terminal background.
 - `0.3.5` Refined the compact statusline bar with quadrant glyphs, darker bar coloring, and blink-on-segment-change behavior. Impact: Codex quota changes are easier to notice while routine refreshes stay visually stable.
 - `0.3.4` Added package banner metadata and README hero image. Impact: Pi/package listings can show the Codex Usage banner while npm packages include the image asset.
 - `Fork baseline` Imported `extensions/pi-codex-usage` from `narumiruna/pi-extensions` as a standalone `@llblab/pi-codex-usage` package. Impact: the extension can be installed and maintained independently.

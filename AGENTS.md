@@ -8,6 +8,6 @@
   - Trigger: Updating quota polling or error handling.
   - Action: Do not collapse the bar while a request is in flight; only show `n/a` or `error` after repeated failures or no usable quota.
 
-- `Compact dual bar`: Encode the 5-hour and weekly quota windows in the five-character separated-sextant bar.
+- `Compact dual bar`: Encode the 5-hour and weekly quota windows in the ten-character separated-sextant bar.
   - Trigger: Changing statusline formatting.
-  - Action: Keep a fixed-width `[xxxxx]` bar where top sextants represent the 5-hour window and bottom sextants represent the weekly window.
+  - Action: Keep a fixed-width `xxxxxxxxxx` bar where top sextants represent the 5-hour window and bottom sextants represent the weekly window, with 20 steps per window.

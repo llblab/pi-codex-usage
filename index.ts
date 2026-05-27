@@ -11,7 +11,7 @@ const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const REFRESH_INTERVAL_MS = 30 * 1000;
 const REDRAW_BLINK_MS = 150;
-const STATUS_KEY = "codex-usage";
+const STATUS_KEY = "aa-codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
 const STATUS_LABEL_TEXT = "codex";
 const DUAL_BAR_CHARS = [
@@ -688,7 +688,8 @@ export function formatCodexUsageStatusline(
   ctx: ExtensionContext,
   _model?: CodexUsageModel,
 ): string {
-  return formatStatuslineText(ctx, formatReportBar(report) ?? "n/a");
+  const bar = formatReportBar(report);
+  return bar ? formatStatuslineBarText(ctx, bar) : formatStatuslineText(ctx, "n/a");
 }
 
 function formatReportBar(report: CodexUsageReport): string | undefined {
@@ -702,8 +703,20 @@ function formatStatuslineText(ctx: ExtensionContext, value: string): string {
   return `${label} ${ctx.ui.theme.fg("dim", value)}`;
 }
 
+function formatStatuslineBarText(ctx: ExtensionContext, bar: string): string {
+  const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
+  const value = ctx.ui.theme.bg(
+    "selectedBg",
+    ctx.ui.theme.fg("dim", bar),
+  );
+  return `${label} ${value}`;
+}
+
 function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
-  return formatStatuslineText(ctx, "\u00a0\u00a0\u00a0\u00a0\u00a0");
+  return formatStatuslineBarText(
+    ctx,
+    "\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0",
+  );
 }
 
 function formatStatuslineProblem(
@@ -755,10 +768,10 @@ function formatDualLimitBar(
   primary: NormalizedRateLimitWindow | undefined,
   secondary: NormalizedRateLimitWindow | undefined,
 ): string {
-  const primaryParts = filledTenths(primary);
-  const secondaryParts = filledTenths(secondary);
+  const primaryParts = filledTwentieths(primary);
+  const secondaryParts = filledTwentieths(secondary);
   let value = "";
-  for (let index = 0; index < 5; index++) {
+  for (let index = 0; index < 10; index++) {
     const leftPart = index * 2 + 1;
     const rightPart = leftPart + 1;
     let mask = 0;
@@ -771,9 +784,9 @@ function formatDualLimitBar(
   return value;
 }
 
-function filledTenths(window: NormalizedRateLimitWindow | undefined): number {
+function filledTwentieths(window: NormalizedRateLimitWindow | undefined): number {
   if (!window) return 0;
-  return Math.round(remainingPercent(window) / 10);
+  return Math.round(remainingPercent(window) / 5);
 }
 
 function remainingPercent(window: NormalizedRateLimitWindow): number {
