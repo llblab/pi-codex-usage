@@ -14,7 +14,6 @@ const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
 const STATUS_LABEL_TEXT = "codex";
-const BAR_EDGE = "𜸩";
 const DUAL_BAR_CHARS = [
   " ",
   "𜹑",
@@ -690,10 +689,7 @@ export function formatCodexUsageStatusline(
 
   if (!snapshot.primary && !snapshot.secondary)
     return formatStatuslineText(ctx, "n/a");
-  return formatStatuslineText(
-    ctx,
-    `${BAR_EDGE}${formatDualLimitBar(snapshot.primary, snapshot.secondary)}${BAR_EDGE}`,
-  );
+  return formatStatuslineText(ctx, formatDualLimitBar(snapshot.primary, snapshot.secondary));
 }
 
 function formatStatuslineText(ctx: ExtensionContext, value: string): string {
@@ -702,7 +698,7 @@ function formatStatuslineText(ctx: ExtensionContext, value: string): string {
 }
 
 function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
-  return formatStatuslineText(ctx, `${BAR_EDGE}\u00a0\u00a0\u00a0\u00a0\u00a0${BAR_EDGE}`);
+  return formatStatuslineText(ctx, "\u00a0\u00a0\u00a0\u00a0\u00a0");
 }
 
 function formatStatuslineProblem(
