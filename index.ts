@@ -925,7 +925,7 @@ function isUnavailableError(error: UsageQueryError): boolean {
 function selectPrimaryCodexSnapshot(
   report: CodexUsageReport,
 ): NormalizedRateLimitSnapshot | undefined {
-  return report.snapshots.find(isPrimaryCodexSnapshot) ?? report.snapshots[0];
+  return report.snapshots.find(isPrimaryCodexSnapshot);
 }
 
 function normalizedUsageKey(value: string | undefined): string | undefined {

@@ -209,6 +209,21 @@ test("formats statusline countdown outside the quota bar background", () => {
   }
 });
 
+test("ignores non-codex usage buckets", () => {
+  assert.equal(
+    formatCodexUsageBar({
+      snapshots: [
+        {
+          limitId: "spark",
+          primary: { usedPercent: 0 },
+          secondary: { usedPercent: 0 },
+        },
+      ],
+    }),
+    undefined,
+  );
+});
+
 test("formats weekly reset countdown from the secondary codex window", () => {
   const now = Date.parse("2026-05-28T00:00:00.000Z");
 

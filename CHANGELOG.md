@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+## 0.5.1: Non-Codex Bucket Hotfix
+
+- Fixed non-Codex app-server quota buckets so Spark-only or unrelated limits are ignored instead of being displayed as Codex quota.
+
 ## 0.5.0: Weekly Reset Countdown
 
 - Added refresh request coalescing so repeated statusline events share one quota lookup instead of spawning parallel provider/fallback requests. Impact: transient failures and busy session-tree updates no longer amplify Codex usage polling work.
