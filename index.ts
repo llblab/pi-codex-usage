@@ -9,7 +9,12 @@ import type {
 const CODEX_PROVIDER_ID = "openai-codex";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
-const REFRESH_INTERVAL_MS = 30 * 1000;
+const SECOND_MS = 1000;
+const MINUTE_MS = 60 * SECOND_MS;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const DAY_TENTH_MS = 144 * MINUTE_MS;
+const REFRESH_INTERVAL_MS = 30 * SECOND_MS;
 const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "aa-codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
@@ -52,7 +57,7 @@ type QueryUsageResult =
   | { ok: true; report: CodexUsageReport }
   | { ok: false; errors: UsageQueryError[] };
 
-type UsageQueryError = {
+export type UsageQueryError = {
   source: UsageSource;
   message: string;
   cause?: unknown;
@@ -70,6 +75,7 @@ export type NormalizedRateLimitSnapshot = {
 
 export type NormalizedRateLimitWindow = {
   usedPercent: number;
+  resetAt?: number;
 };
 
 type RateLimitStatusPayload = {
@@ -83,6 +89,13 @@ type BackendRateLimitDetails = {
 
 type BackendWindowSnapshot = {
   used_percent?: unknown;
+  reset_at?: unknown;
+  resets_at?: unknown;
+  reset_time?: unknown;
+  end_time?: unknown;
+  ends_at?: unknown;
+  expires_at?: unknown;
+  reset_after_seconds?: unknown;
 };
 
 type AppServerRateLimitResponse = {
@@ -97,6 +110,13 @@ type AppServerRateLimitSnapshot = {
 
 type AppServerWindowSnapshot = {
   usedPercent?: unknown;
+  resetAt?: unknown;
+  resetsAt?: unknown;
+  resetTime?: unknown;
+  endTime?: unknown;
+  endsAt?: unknown;
+  expiresAt?: unknown;
+  resetAfterSeconds?: unknown;
 };
 
 type RpcResponse = {
@@ -113,17 +133,21 @@ type PendingRpc = {
 export default function codexUsage(pi: ExtensionAPI) {
   let cache: CachedReport | undefined;
   let failedRefreshes = 0;
+  let inFlightUsageQuery: Promise<QueryUsageResult> | undefined;
   let statuslineBlinkTimer: TimeoutHandle | undefined;
   let statuslineClearTimer: TimeoutHandle | undefined;
+  let statuslineCountdownTimer: TimeoutHandle | undefined;
   let statuslineRefreshTimer: TimeoutHandle | undefined;
   let statuslineRequestId = 0;
 
   const clearStatuslineTimers = () => {
     if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
     if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
+    if (statuslineCountdownTimer) clearTimeout(statuslineCountdownTimer);
     if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
     statuslineBlinkTimer = undefined;
     statuslineClearTimer = undefined;
+    statuslineCountdownTimer = undefined;
     statuslineRefreshTimer = undefined;
   };
 
@@ -150,6 +174,29 @@ export default function codexUsage(pi: ExtensionAPI) {
     statuslineRefreshTimer.unref?.();
   };
 
+  const scheduleStatuslineCountdown = (
+    ctx: ExtensionContext,
+    report: CodexUsageReport,
+    model: CodexUsageModel | undefined,
+  ) => {
+    if (statuslineCountdownTimer) clearTimeout(statuslineCountdownTimer);
+    const delayMs = nextResetCountdownDelayMs(report);
+    if (delayMs === undefined) {
+      statuslineCountdownTimer = undefined;
+      return;
+    }
+    statuslineCountdownTimer = setTimeout(() => {
+      if (isOpenAICodexModel(ctx.model)) {
+        ctx.ui.setStatus(
+          STATUS_KEY,
+          formatCodexUsageStatusline(report, ctx, model),
+        );
+        scheduleStatuslineCountdown(ctx, report, model);
+      }
+    }, delayMs) as TimeoutHandle;
+    statuslineCountdownTimer.unref?.();
+  };
+
   const setUsageStatusline = (
     ctx: ExtensionContext,
     report: CodexUsageReport,
@@ -161,21 +208,36 @@ export default function codexUsage(pi: ExtensionAPI) {
   ) => {
     if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
     if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
+    if (statuslineCountdownTimer) clearTimeout(statuslineCountdownTimer);
     statuslineBlinkTimer = undefined;
     statuslineClearTimer = undefined;
+    statuslineCountdownTimer = undefined;
     const text = formatCodexUsageStatusline(report, ctx, options.model);
     if (options.blink) {
       ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
       statuslineBlinkTimer = setTimeout(() => {
         ctx.ui.setStatus(STATUS_KEY, text);
+        scheduleStatuslineCountdown(ctx, report, options.model);
         statuslineBlinkTimer = undefined;
       }, REDRAW_BLINK_MS) as TimeoutHandle;
       statuslineBlinkTimer.unref?.();
     } else {
       ctx.ui.setStatus(STATUS_KEY, text);
+      scheduleStatuslineCountdown(ctx, report, options.model);
     }
     if (options.autoRefresh) scheduleStatuslineRefresh(ctx);
     else scheduleTemporaryStatuslineClear(ctx);
+  };
+
+  const queryCurrentUsage = (ctx: ExtensionContext) => {
+    if (!inFlightUsageQuery) {
+      inFlightUsageQuery = queryUsage(ctx, {
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      }).finally(() => {
+        inFlightUsageQuery = undefined;
+      });
+    }
+    return inFlightUsageQuery;
   };
 
   const refreshCurrentCodexUsageStatusline = async (
@@ -204,7 +266,7 @@ export default function codexUsage(pi: ExtensionAPI) {
       return;
     }
 
-    const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
+    const result = await queryCurrentUsage(ctx);
     if (requestId !== statuslineRequestId) return;
     if (!isOpenAICodexModel(ctx.model)) {
       clearUsageStatusline(ctx);
@@ -578,7 +640,11 @@ export function normalizeBackendPayload(
   _capturedAt: number,
   _source: UsageSource,
 ): CodexUsageReport {
-  const snapshot = normalizeBackendSnapshot("codex", payload.rate_limit);
+  const snapshot = normalizeBackendSnapshot(
+    "codex",
+    payload.rate_limit,
+    _capturedAt,
+  );
   if (!snapshot) {
     throw new Error(
       "Codex usage endpoint returned no displayable rate-limit windows.",
@@ -590,20 +656,25 @@ export function normalizeBackendPayload(
 function normalizeBackendSnapshot(
   limitId: string,
   rateLimit: unknown,
+  capturedAt: number,
 ): NormalizedRateLimitSnapshot | undefined {
   if (rateLimit === null || rateLimit === undefined) return undefined;
   const details = assertObject(
     rateLimit,
     "rate limit",
   ) as BackendRateLimitDetails;
-  const primary = normalizeBackendWindow(details.primary_window);
-  const secondary = normalizeBackendWindow(details.secondary_window);
+  const primary = normalizeBackendWindow(details.primary_window, capturedAt);
+  const secondary = normalizeBackendWindow(
+    details.secondary_window,
+    capturedAt,
+  );
   if (!primary && !secondary) return undefined;
   return { limitId, primary, secondary };
 }
 
 function normalizeBackendWindow(
   value: unknown,
+  capturedAt: number,
 ): NormalizedRateLimitWindow | undefined {
   if (value === null || value === undefined) return undefined;
   const window = assertObject(
@@ -612,7 +683,19 @@ function normalizeBackendWindow(
   ) as BackendWindowSnapshot;
   const usedPercent = asNumber(window.used_percent);
   if (usedPercent === undefined) return undefined;
-  return { usedPercent };
+  const resetAt = asResetTime(
+    [
+      window.reset_at,
+      window.resets_at,
+      window.reset_time,
+      window.end_time,
+      window.ends_at,
+      window.expires_at,
+    ],
+    window.reset_after_seconds,
+    capturedAt,
+  );
+  return resetAt === undefined ? { usedPercent } : { usedPercent, resetAt };
 }
 
 export function normalizeAppServerResponse(
@@ -621,7 +704,7 @@ export function normalizeAppServerResponse(
 ): CodexUsageReport {
   const snapshots: NormalizedRateLimitSnapshot[] = [];
   const addSnapshot = (raw: unknown, fallbackId: string) => {
-    const snapshot = normalizeAppServerSnapshot(raw, fallbackId);
+    const snapshot = normalizeAppServerSnapshot(raw, fallbackId, _capturedAt);
     if (!snapshot) return;
     const existingIndex = snapshots.findIndex(
       (item) => item.limitId === snapshot.limitId,
@@ -634,7 +717,11 @@ export function normalizeAppServerResponse(
     else snapshots.push(snapshot);
   };
 
-  addSnapshot(response.rateLimits, "codex");
+  if (Array.isArray(response.rateLimits)) {
+    for (const item of response.rateLimits) addSnapshot(item, "codex");
+  } else {
+    addSnapshot(response.rateLimits, "codex");
+  }
   if (snapshots.length === 0) {
     throw new Error(
       "codex app-server returned no displayable rate-limit windows.",
@@ -647,6 +734,7 @@ export function normalizeAppServerResponse(
 function normalizeAppServerSnapshot(
   raw: unknown,
   fallbackId: string,
+  capturedAt: number,
 ): NormalizedRateLimitSnapshot | undefined {
   if (raw === null || raw === undefined) return undefined;
   const snapshot = assertObject(
@@ -654,14 +742,15 @@ function normalizeAppServerSnapshot(
     "app-server rate-limit snapshot",
   ) as AppServerRateLimitSnapshot;
   const limitId = asString(snapshot.limitId) ?? fallbackId;
-  const primary = normalizeAppServerWindow(snapshot.primary);
-  const secondary = normalizeAppServerWindow(snapshot.secondary);
+  const primary = normalizeAppServerWindow(snapshot.primary, capturedAt);
+  const secondary = normalizeAppServerWindow(snapshot.secondary, capturedAt);
   if (!primary && !secondary) return undefined;
   return { limitId, primary, secondary };
 }
 
 function normalizeAppServerWindow(
   value: unknown,
+  capturedAt: number,
 ): NormalizedRateLimitWindow | undefined {
   if (value === null || value === undefined) return undefined;
   const window = assertObject(
@@ -670,7 +759,19 @@ function normalizeAppServerWindow(
   ) as AppServerWindowSnapshot;
   const usedPercent = asNumber(window.usedPercent);
   if (usedPercent === undefined) return undefined;
-  return { usedPercent };
+  const resetAt = asResetTime(
+    [
+      window.resetAt,
+      window.resetsAt,
+      window.resetTime,
+      window.endTime,
+      window.endsAt,
+      window.expiresAt,
+    ],
+    window.resetAfterSeconds,
+    capturedAt,
+  );
+  return resetAt === undefined ? { usedPercent } : { usedPercent, resetAt };
 }
 
 function mergeSnapshot(
@@ -690,7 +791,81 @@ export function formatCodexUsageStatusline(
   _model?: CodexUsageModel,
 ): string {
   const bar = formatReportBar(report);
-  return bar ? formatStatuslineBarText(ctx, bar) : formatStatuslineText(ctx, "n/a");
+  if (!bar) return formatStatuslineText(ctx, "n/a");
+  const countdown = formatWeeklyResetCountdown(report);
+  const barText = formatStatuslineBarText(ctx, bar);
+  return countdown
+    ? `${barText} ${ctx.ui.theme.fg("dim", countdown)}`
+    : barText;
+}
+
+export function formatCodexUsageBar(
+  report: CodexUsageReport,
+): string | undefined {
+  return formatReportBar(report);
+}
+
+export function formatWeeklyResetCountdown(
+  report: CodexUsageReport,
+  now = Date.now(),
+): string | undefined {
+  const resetAt = selectPrimaryCodexSnapshot(report)?.secondary?.resetAt;
+  if (resetAt === undefined) return undefined;
+  return formatResetCountdown(resetAt, now);
+}
+
+export function formatResetCountdown(
+  resetAt: number,
+  now = Date.now(),
+): string {
+  const remainingMs = Math.max(0, resetAt - now);
+  if (remainingMs >= DAY_MS) {
+    const dayTenths = Math.max(10, Math.ceil(remainingMs / DAY_TENTH_MS));
+    return `${formatTenths(dayTenths)}d`;
+  }
+  if (remainingMs >= HOUR_MS) return `${Math.floor(remainingMs / HOUR_MS)}h`;
+  if (remainingMs >= MINUTE_MS)
+    return `${Math.floor(remainingMs / MINUTE_MS)}m`;
+  return `${Math.floor(remainingMs / SECOND_MS)}s`;
+}
+
+export function nextResetCountdownDelayMs(
+  report: CodexUsageReport,
+  now = Date.now(),
+): number | undefined {
+  const resetAt = selectPrimaryCodexSnapshot(report)?.secondary?.resetAt;
+  if (resetAt === undefined) return undefined;
+  return nextResetCountdownDelayForRemainingMs(resetAt - now);
+}
+
+export function nextResetCountdownDelayForRemainingMs(
+  remainingMs: number,
+): number | undefined {
+  if (remainingMs <= 0) return undefined;
+  if (remainingMs >= DAY_MS) {
+    const dayTenths = Math.max(10, Math.ceil(remainingMs / DAY_TENTH_MS));
+    return Math.max(1, remainingMs - (dayTenths - 1) * DAY_TENTH_MS);
+  }
+  if (remainingMs >= HOUR_MS) {
+    return Math.max(
+      1,
+      remainingMs - Math.floor(remainingMs / HOUR_MS) * HOUR_MS + 1,
+    );
+  }
+  if (remainingMs >= MINUTE_MS) {
+    return Math.max(
+      1,
+      remainingMs - Math.floor(remainingMs / MINUTE_MS) * MINUTE_MS + 1,
+    );
+  }
+  return Math.max(
+    1,
+    remainingMs - Math.floor(remainingMs / SECOND_MS) * SECOND_MS + 1,
+  );
+}
+
+function formatTenths(value: number): string {
+  return value % 10 === 0 ? String(value / 10) : (value / 10).toFixed(1);
 }
 
 function formatReportBar(report: CodexUsageReport): string | undefined {
@@ -706,10 +881,7 @@ function formatStatuslineText(ctx: ExtensionContext, value: string): string {
 
 function formatStatuslineBarText(ctx: ExtensionContext, bar: string): string {
   const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
-  const value = ctx.ui.theme.bg(
-    "selectedBg",
-    ctx.ui.theme.fg("dim", bar),
-  );
+  const value = ctx.ui.theme.bg("selectedBg", ctx.ui.theme.fg("dim", bar));
   return `${label} ${value}`;
 }
 
@@ -722,30 +894,32 @@ function formatStatuslineProblem(
   errors: UsageQueryError[],
 ): string {
   const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
-  const value = isUnavailable(errors)
+  const value = isUsageUnavailable(errors)
     ? ctx.ui.theme.fg("muted", "n/a")
     : ctx.ui.theme.fg("error", "error");
   return `${label} ${value}`;
 }
 
-function isUnavailable(errors: UsageQueryError[]): boolean {
-  return errors.some((error) => {
-    const message = error.message.toLowerCase();
-    return (
-      message.includes("no pi openai codex subscription auth") ||
-      message.includes("no displayable rate-limit windows") ||
-      message.includes("returned no displayable rate-limit windows") ||
-      message.includes("returned 401") ||
-      message.includes("returned 403") ||
-      message.includes("unauthorized") ||
-      message.includes("forbidden") ||
-      message.includes("subscription") ||
-      message.includes("no active plan") ||
-      message.includes("plan unavailable") ||
-      message.includes("quota unavailable") ||
-      message.includes("rate limits unavailable")
-    );
-  });
+export function isUsageUnavailable(errors: UsageQueryError[]): boolean {
+  return errors.length > 0 && errors.every(isUnavailableError);
+}
+
+function isUnavailableError(error: UsageQueryError): boolean {
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("no pi openai codex subscription auth") ||
+    message.includes("no displayable rate-limit windows") ||
+    message.includes("returned no displayable rate-limit windows") ||
+    message.includes("returned 401") ||
+    message.includes("returned 403") ||
+    message.includes("unauthorized") ||
+    message.includes("forbidden") ||
+    message.includes("subscription") ||
+    message.includes("no active plan") ||
+    message.includes("plan unavailable") ||
+    message.includes("quota unavailable") ||
+    message.includes("rate limits unavailable")
+  );
 }
 
 function selectPrimaryCodexSnapshot(
@@ -782,7 +956,9 @@ function formatDualLimitBar(
   return value;
 }
 
-function filledTwentieths(window: NormalizedRateLimitWindow | undefined): number {
+function filledTwentieths(
+  window: NormalizedRateLimitWindow | undefined,
+): number {
   if (!window) return 0;
   return Math.round(remainingPercent(window) / 5);
 }
@@ -835,6 +1011,34 @@ function asNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
     const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function asResetTime(
+  absoluteValues: unknown[],
+  relativeSeconds: unknown,
+  capturedAt: number,
+): number | undefined {
+  for (const value of absoluteValues) {
+    const timestamp = asTimestampMs(value);
+    if (timestamp !== undefined) return timestamp;
+  }
+  const seconds = asNumber(relativeSeconds);
+  if (seconds === undefined || seconds < 0) return undefined;
+  return capturedAt + seconds * SECOND_MS;
+}
+
+function asTimestampMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 0) return undefined;
+    return value < 10_000_000_000 ? value * SECOND_MS : value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return asTimestampMs(numeric);
+    const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;

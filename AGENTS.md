@@ -11,3 +11,7 @@
 - `Compact dual bar`: Encode the 5-hour and weekly quota windows in the ten-character separated-sextant bar.
   - Trigger: Changing statusline formatting.
   - Action: Keep a fixed-width `xxxxxxxxxx` bar where top sextants represent the 5-hour window and bottom sextants represent the weekly window, with 20 steps per window.
+
+- `Weekly reset countdown`: Append the weekly reset countdown only when the secondary window exposes a reset time.
+  - Trigger: Changing reset-time normalization or statusline refresh cadence.
+  - Action: Keep `d` labels rounded upward in 144-minute day-tenth steps, `h`/`m`/`s` labels floored, and hold `0s` until a successful quota refresh reports the next window.

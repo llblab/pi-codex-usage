@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0: Weekly Reset Countdown
+
+- Added refresh request coalescing so repeated statusline events share one quota lookup instead of spawning parallel provider/fallback requests. Impact: transient failures and busy session-tree updates no longer amplify Codex usage polling work.
+- Hardened quota parsing and failure classification by accepting array-shaped app-server rate limits, treating `n/a` as valid only when every failed source reports an unavailable auth/plan/quota state, and adding `node:test` coverage for normalization, bar formatting, and failure classification. Impact: real fallback/runtime failures are surfaced as `error` while expected unavailable states still show `n/a`.
+- Added a weekly reset countdown after the quota bar when the secondary Codex window exposes a reset timestamp, including 144-minute day-tenth steps, exact boundary redraw scheduling, hour/minute/second bucket formatting, and `0s` holdover until the next successful quota refresh. Impact: the statusline now shows both remaining quota and time until the weekly bucket cycles.
+
 ## 0.4.1: Stable Startup Bar
 
 - Fixed the initial empty statusline bar to use ten non-trimmed blank glyph cells through the same formatting path as the populated quota bar. Impact: the footer background stays at ten cells during startup before the first quota values arrive.
