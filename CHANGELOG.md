@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.2: Sub-Day Reset Countdown And JPEG Banner
+
+- Refined the weekly reset countdown below 24 hours to use upward-rounded 6-minute hour-tenth steps (`24h`, `23.7h`, `20.1h`, `20h`, `19.9h`, …, `1h`) instead of coarse whole-hour floors. Impact: the statusline gives more useful sub-day reset timing without growing wider than one decimal place.
+- Replaced the package/banner artwork from PNG to JPEG and updated package metadata plus README image references. Impact: the package ships the new compressed banner asset consistently across npm and Pi extension listings.
+
 ## 0.5.1: Non-Codex Bucket Hotfix
 
 - Fixed non-Codex app-server quota buckets so Spark-only or unrelated limits are ignored instead of being displayed as Codex quota.

@@ -12,6 +12,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 const HOUR_MS = 60 * MINUTE_MS;
+const HOUR_TENTH_MS = 6 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const DAY_TENTH_MS = 144 * MINUTE_MS;
 const REFRESH_INTERVAL_MS = 30 * SECOND_MS;
@@ -819,11 +820,14 @@ export function formatResetCountdown(
   now = Date.now(),
 ): string {
   const remainingMs = Math.max(0, resetAt - now);
-  if (remainingMs >= DAY_MS) {
+  if (remainingMs > DAY_MS) {
     const dayTenths = Math.max(10, Math.ceil(remainingMs / DAY_TENTH_MS));
     return `${formatTenths(dayTenths)}d`;
   }
-  if (remainingMs >= HOUR_MS) return `${Math.floor(remainingMs / HOUR_MS)}h`;
+  if (remainingMs >= HOUR_MS) {
+    const hourTenths = Math.max(10, Math.ceil(remainingMs / HOUR_TENTH_MS));
+    return `${formatTenths(hourTenths)}h`;
+  }
   if (remainingMs >= MINUTE_MS)
     return `${Math.floor(remainingMs / MINUTE_MS)}m`;
   return `${Math.floor(remainingMs / SECOND_MS)}s`;
@@ -842,15 +846,14 @@ export function nextResetCountdownDelayForRemainingMs(
   remainingMs: number,
 ): number | undefined {
   if (remainingMs <= 0) return undefined;
-  if (remainingMs >= DAY_MS) {
+  if (remainingMs > DAY_MS) {
     const dayTenths = Math.max(10, Math.ceil(remainingMs / DAY_TENTH_MS));
     return Math.max(1, remainingMs - (dayTenths - 1) * DAY_TENTH_MS);
   }
   if (remainingMs >= HOUR_MS) {
-    return Math.max(
-      1,
-      remainingMs - Math.floor(remainingMs / HOUR_MS) * HOUR_MS + 1,
-    );
+    const hourTenths = Math.max(10, Math.ceil(remainingMs / HOUR_TENTH_MS));
+    if (hourTenths === 10) return Math.max(1, remainingMs - HOUR_MS + 1);
+    return Math.max(1, remainingMs - (hourTenths - 1) * HOUR_TENTH_MS);
   }
   if (remainingMs >= MINUTE_MS) {
     return Math.max(

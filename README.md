@@ -2,7 +2,7 @@
 
 > Minimal zero-configuration Pi extension for showing primary ChatGPT Codex usage limits in the statusline
 
-![Codex Usage](./banner.png)
+![Codex Usage](./banner.jpg)
 
 This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-codex-usage`](https://github.com/narumiruna/pi-extensions/tree/main/extensions/pi-codex-usage). It keeps the auth and quota-fetching path, but intentionally narrows the interface to the primary Codex 5-hour and weekly limits.
 
@@ -48,7 +48,7 @@ codex ██████▀▀▀▀ 6d
 
 The ten-character bar encodes two twenty-step limits at once: 40 total bits of quota state in 10 terminal cells. Each step is 5%: the top quadrants are the 5-hour limit, and the bottom quadrants are the weekly limit.
 
-When the weekly reset time is available, the bar is followed by a countdown. More than a day remains is shown in 144-minute day-tenth steps such as `7d`, `6.9d`, `6.6d`, `5.1d`, `5d`, `3.7d`, `3d`, `2d`, `1.9d`, `1.5d`, `1.1d`, and `1d`, rounded upward to the next tenth. Under a day it switches to floored hours, under an hour to floored minutes, and under a minute to seconds. After the reset timestamp passes, `0s` is held until the next successful quota refresh reports the new weekly window.
+When the weekly reset time is available, the bar is followed by a countdown. More than a day remains is shown in 144-minute day-tenth steps such as `7d`, `6.9d`, `6.6d`, `5.1d`, `5d`, `3.7d`, `3d`, `2d`, `1.9d`, `1.5d`, and `1.1d`, rounded upward to the next tenth. At 24 hours and below it switches to upward-rounded 6-minute hour-tenth steps such as `24h`, `23.7h`, `20.1h`, `20h`, `19.9h`, `1.4h`, `1.3h`, `1.2h`, `1.1h`, and `1h`. Under an hour it switches to floored minutes, and under a minute to seconds. After the reset timestamp passes, `0s` is held until the next successful quota refresh reports the new weekly window.
 
 Unavailable because Codex auth or subscription quota is not available:
 

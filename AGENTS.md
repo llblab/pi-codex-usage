@@ -14,4 +14,4 @@
 
 - `Weekly reset countdown`: Append the weekly reset countdown only when the secondary window exposes a reset time.
   - Trigger: Changing reset-time normalization or statusline refresh cadence.
-  - Action: Keep `d` labels rounded upward in 144-minute day-tenth steps, `h`/`m`/`s` labels floored, and hold `0s` until a successful quota refresh reports the next window.
+  - Action: Keep `d` labels rounded upward in 144-minute day-tenth steps above 24h, show 24h..1h labels in upward-rounded 6-minute hour-tenth steps, keep `m`/`s` labels floored, and hold `0s` until a successful quota refresh reports the next window.

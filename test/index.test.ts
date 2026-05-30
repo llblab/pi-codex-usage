@@ -21,6 +21,7 @@ const usageError = (message: string): UsageQueryError => ({
 const secondMs = 1000;
 const minuteMs = 60 * secondMs;
 const hourMs = 60 * minuteMs;
+const hourTenthMs = 6 * minuteMs;
 const dayMs = 24 * hourMs;
 const dayTenthMs = 144 * minuteMs;
 
@@ -152,11 +153,41 @@ test("formats weekly reset countdown by remaining duration bucket", () => {
     formatResetCountdown(now + dayMs + 2 * hourMs + 24 * minuteMs, now),
     "1.1d",
   );
-  assert.equal(formatResetCountdown(now + dayMs, now), "1d");
+  assert.equal(formatResetCountdown(now + dayMs, now), "24h");
   assert.equal(
     formatResetCountdown(now + 23 * hourMs + 59 * minuteMs, now),
-    "23h",
+    "24h",
   );
+  assert.equal(
+    formatResetCountdown(now + 23 * hourMs + 42 * minuteMs, now),
+    "23.7h",
+  );
+  assert.equal(
+    formatResetCountdown(now + 20 * hourMs + 6 * minuteMs, now),
+    "20.1h",
+  );
+  assert.equal(formatResetCountdown(now + 20 * hourMs, now), "20h");
+  assert.equal(
+    formatResetCountdown(now + 19 * hourMs + 54 * minuteMs, now),
+    "19.9h",
+  );
+  assert.equal(
+    formatResetCountdown(now + hourMs + 24 * minuteMs, now),
+    "1.4h",
+  );
+  assert.equal(
+    formatResetCountdown(now + hourMs + 18 * minuteMs, now),
+    "1.3h",
+  );
+  assert.equal(
+    formatResetCountdown(now + hourMs + 12 * minuteMs, now),
+    "1.2h",
+  );
+  assert.equal(
+    formatResetCountdown(now + hourMs + 6 * minuteMs, now),
+    "1.1h",
+  );
+  assert.equal(formatResetCountdown(now + hourMs, now), "1h");
   assert.equal(
     formatResetCountdown(now + 59 * minuteMs + 59 * secondMs, now),
     "59m",
@@ -173,9 +204,18 @@ test("schedules countdown redraws at the next display boundary", () => {
     84 * minuteMs,
   );
   assert.equal(
-    nextResetCountdownDelayForRemainingMs(23 * hourMs + 15 * minuteMs),
-    15 * minuteMs + 1,
+    nextResetCountdownDelayForRemainingMs(23 * hourMs + 59 * minuteMs),
+    5 * minuteMs,
   );
+  assert.equal(
+    nextResetCountdownDelayForRemainingMs(23 * hourMs + 15 * minuteMs),
+    3 * minuteMs,
+  );
+  assert.equal(
+    nextResetCountdownDelayForRemainingMs(20 * hourMs),
+    hourTenthMs,
+  );
+  assert.equal(nextResetCountdownDelayForRemainingMs(hourMs), 1);
   assert.equal(
     nextResetCountdownDelayForRemainingMs(59 * minuteMs + 30 * secondMs),
     30 * secondMs + 1,
