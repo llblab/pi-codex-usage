@@ -7,6 +7,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 const CODEX_PROVIDER_ID = "openai-codex";
+const CODEX_USAGE_EXTENSION_ID = "@llblab/pi-codex-usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const SECOND_MS = 1000;
@@ -21,6 +22,10 @@ const STATUS_KEY = "aa-codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
 const STATUS_LABEL_TEXT = "codex";
 const DUAL_BAR_WIDTH = 10;
+const TELEGRAM_STATUS_IMPORT_SPECIFIERS = [
+  "@llblab/pi-telegram/status",
+  new URL("../pi-telegram/api/status.ts", import.meta.url).href,
+];
 const DUAL_BAR_CHARS = [
   "⠀",
   "▘",
@@ -44,6 +49,19 @@ type UsageSource = "pi-auth" | "codex-app-server";
 type TimeoutHandle = ReturnType<typeof setTimeout> & { unref?: () => void };
 type PiModel = NonNullable<ExtensionContext["model"]>;
 export type CodexUsageModel = Pick<PiModel, "id" | "name" | "provider">;
+type CodexUsageTelegramStatusModel = Pick<PiModel, "provider">;
+type TelegramStatusLineProviderResult =
+  | { label: string; value: string }
+  | undefined;
+type TelegramStatusLineProvider = (ctx: {
+  activeModel?: CodexUsageTelegramStatusModel;
+}) => TelegramStatusLineProviderResult;
+type TelegramStatusLineModule = {
+  registerTelegramStatusLineProvider?: (
+    provider: TelegramStatusLineProvider,
+    options: { id: string },
+  ) => () => void;
+};
 
 type QueryUsageOptions = {
   timeoutMs: number;
@@ -140,6 +158,26 @@ export default function codexUsage(pi: ExtensionAPI) {
   let statuslineCountdownTimer: TimeoutHandle | undefined;
   let statuslineRefreshTimer: TimeoutHandle | undefined;
   let statuslineRequestId = 0;
+  let unregisterTelegramStatusLine: (() => void) | undefined;
+  let telegramStatusLineRegistration: Promise<void> | undefined;
+
+  const ensureTelegramStatusLineRegistered = () => {
+    if (unregisterTelegramStatusLine || telegramStatusLineRegistration) return;
+    telegramStatusLineRegistration = registerCodexUsageTelegramStatusLine(
+      ({ activeModel }) => {
+        if (!isOpenAICodexModel(activeModel)) return undefined;
+        if (!cache) return undefined;
+        const value = formatCodexUsageStatusValue(cache.report);
+        return value ? { label: "codex", value } : undefined;
+      },
+    )
+      .then((unregister) => {
+        unregisterTelegramStatusLine = unregister;
+      })
+      .finally(() => {
+        telegramStatusLineRegistration = undefined;
+      });
+  };
 
   const clearStatuslineTimers = () => {
     if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
@@ -299,7 +337,10 @@ export default function codexUsage(pi: ExtensionAPI) {
     });
   };
 
+  ensureTelegramStatusLineRegistered();
+
   pi.on("session_start", (_event, ctx) => {
+    ensureTelegramStatusLineRegistered();
     if (isOpenAICodexModel(ctx.model))
       void refreshCurrentCodexUsageStatusline(ctx, false);
     else clearUsageStatusline(ctx);
@@ -319,13 +360,42 @@ export default function codexUsage(pi: ExtensionAPI) {
     }
   });
 
-  pi.on("session_shutdown", (_event, ctx) => clearUsageStatusline(ctx));
+  pi.on("session_shutdown", (_event, ctx) => {
+    clearUsageStatusline(ctx);
+    unregisterTelegramStatusLine?.();
+    unregisterTelegramStatusLine = undefined;
+  });
 }
 
 function isOpenAICodexModel(
   model: Pick<PiModel, "provider"> | undefined,
 ): boolean {
   return model?.provider === CODEX_PROVIDER_ID;
+}
+
+async function importTelegramStatusLineModule(): Promise<
+  TelegramStatusLineModule | undefined
+> {
+  for (const specifier of TELEGRAM_STATUS_IMPORT_SPECIFIERS) {
+    try {
+      const imported = (await import(specifier)) as TelegramStatusLineModule;
+      if (typeof imported.registerTelegramStatusLineProvider === "function") {
+        return imported;
+      }
+    } catch {
+      // pi-telegram is optional; absence just disables the Telegram status line.
+    }
+  }
+  return undefined;
+}
+
+async function registerCodexUsageTelegramStatusLine(
+  provider: TelegramStatusLineProvider,
+): Promise<(() => void) | undefined> {
+  const telegramStatus = await importTelegramStatusLineModule();
+  return telegramStatus?.registerTelegramStatusLineProvider?.(provider, {
+    id: CODEX_USAGE_EXTENSION_ID,
+  });
 }
 
 async function queryUsage(
@@ -791,10 +861,10 @@ export function formatCodexUsageStatusline(
   ctx: ExtensionContext,
   _model?: CodexUsageModel,
 ): string {
-  const bar = formatReportBar(report);
-  if (!bar) return formatStatuslineText(ctx, "n/a");
-  const countdown = formatWeeklyResetCountdown(report);
-  const barText = formatStatuslineBarText(ctx, bar);
+  const value = formatCodexUsageStatusValue(report);
+  if (!value) return formatStatuslineText(ctx, "n/a");
+  const [bar, countdown] = value.split(" ", 2);
+  const barText = formatStatuslineBarText(ctx, bar ?? "");
   return countdown
     ? `${barText} ${ctx.ui.theme.fg("dim", countdown)}`
     : barText;
@@ -804,6 +874,16 @@ export function formatCodexUsageBar(
   report: CodexUsageReport,
 ): string | undefined {
   return formatReportBar(report);
+}
+
+export function formatCodexUsageStatusValue(
+  report: CodexUsageReport,
+  now = Date.now(),
+): string | undefined {
+  const bar = formatReportBar(report);
+  if (!bar) return undefined;
+  const countdown = formatWeeklyResetCountdown(report, now);
+  return countdown ? `${bar} ${countdown}` : bar;
 }
 
 export function formatWeeklyResetCountdown(

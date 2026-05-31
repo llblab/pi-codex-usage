@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   formatCodexUsageBar,
+  formatCodexUsageStatusValue,
   formatCodexUsageStatusline,
   formatResetCountdown,
   formatWeeklyResetCountdown,
@@ -261,6 +262,25 @@ test("ignores non-codex usage buckets", () => {
       ],
     }),
     undefined,
+  );
+});
+
+test("formats reusable compact Codex status values", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  assert.equal(
+    formatCodexUsageStatusValue(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: { usedPercent: 50 },
+            secondary: { usedPercent: 100, resetAt: now + 23 * hourMs },
+          },
+        ],
+      },
+      now,
+    ),
+    "▀▀▀▀▀⠀⠀⠀⠀⠀ 23h",
   );
 });
 

@@ -16,6 +16,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 
 - Shows an empty statusline bar immediately, then refreshes every 30 seconds while the active Pi model uses `openai-codex`
 - Statusline output stays compact, with the `codex` label accented and the quota bar plus weekly reset countdown drawn on a themed background
+- When `pi-telegram` is available, the same compact value appears as `codex: <value>` in the `/start` menu status text for active OpenAI Codex subscription models
 - Additional returned buckets, including Spark-specific limits, are ignored
 - Pi OpenAI Codex provider auth is used first
 - Codex CLI app-server remains available as a fallback
@@ -61,6 +62,16 @@ Runtime failure, such as a network or provider error:
 ```text
 codex error
 ```
+
+## Telegram Status Menu
+
+If `@llblab/pi-telegram` is loaded with the public status-line provider API, this extension registers an optional `/start` menu status row. The row is shown only while the active model uses the OpenAI Codex subscription provider:
+
+```text
+codex: ██████▀▀▀▀ 6d
+```
+
+The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline. If `pi-telegram` is absent, older, or the active model is not a Codex subscription model, no Telegram row is added.
 
 ## Auth
 

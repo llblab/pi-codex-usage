@@ -1,8 +1,8 @@
 # Agent Notes
 
-- `Statusline-only scope`: Keep this extension zero-configuration and statusline-only.
+- `Statusline-first scope`: Keep this extension zero-configuration and focused on compact status surfaces.
   - Trigger: Considering commands, menus, persisted settings, or notification output.
-  - Action: Prefer deleting the surface unless it is required for the optimistic status widget.
+  - Action: Prefer deleting the surface unless it is required for the optimistic TUI status widget or the optional `pi-telegram` `/start` status-line mirror.
 
 - `Optimistic refresh`: Preserve the last good statusline bar during refresh and transient failures.
   - Trigger: Updating quota polling or error handling.

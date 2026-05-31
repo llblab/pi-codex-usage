@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.0: Telegram Status Integration
+
+- Added optional `pi-telegram` status-menu integration through the public Telegram status-line provider API. When `pi-telegram` is available and the active model is an OpenAI Codex subscription model, the `/start` menu status text now includes `codex: <value>` using the same compact quota bar and reset countdown value as the terminal statusline. Impact: Telegram operators can see Codex quota/reset state in the main control menu without any extra configuration, while non-Codex models and missing `pi-telegram` installs stay unchanged.
+
 ## 0.5.2: Sub-Day Reset Countdown And JPEG Banner
 
 - Refined the weekly reset countdown below 24 hours to use upward-rounded 6-minute hour-tenth steps (`24h`, `23.7h`, `20.1h`, `20h`, `19.9h`, …, `1h`) instead of coarse whole-hour floors. Impact: the statusline gives more useful sub-day reset timing without growing wider than one decimal place.
