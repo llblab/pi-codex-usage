@@ -864,7 +864,11 @@ export function formatCodexUsageStatusline(
   const value = formatCodexUsageStatusValue(report);
   if (!value) return formatStatuslineText(ctx, "n/a");
   const [bar, countdown] = value.split(" ", 2);
-  const barText = formatStatuslineBarText(ctx, bar ?? "");
+  const barText = formatStatuslineBarText(
+    ctx,
+    bar ?? "",
+    hasExhaustedQuotaWindow(report) ? "toolErrorBg" : "selectedBg",
+  );
   return countdown
     ? `${barText} ${ctx.ui.theme.fg("dim", countdown)}`
     : barText;
@@ -880,8 +884,18 @@ export function formatCodexUsageStatusValue(
   report: CodexUsageReport,
   now = Date.now(),
 ): string | undefined {
-  const bar = formatReportBar(report);
-  if (!bar) return undefined;
+  const snapshot = selectPrimaryCodexSnapshot(report);
+  if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
+  const bar = formatDualLimitBar(snapshot.primary, snapshot.secondary);
+  if (isQuotaWindowExhausted(snapshot.primary) && snapshot.primary?.resetAt) {
+    const primaryCountdown = formatResetCountdown(snapshot.primary.resetAt, now);
+    const weeklyCountdown = snapshot.secondary?.resetAt
+      ? formatResetCountdown(snapshot.secondary.resetAt, now)
+      : undefined;
+    return weeklyCountdown
+      ? `${bar} ${primaryCountdown}/${weeklyCountdown}`
+      : `${bar} ${primaryCountdown}`;
+  }
   const countdown = formatWeeklyResetCountdown(report, now);
   return countdown ? `${bar} ${countdown}` : bar;
 }
@@ -917,9 +931,16 @@ export function nextResetCountdownDelayMs(
   report: CodexUsageReport,
   now = Date.now(),
 ): number | undefined {
-  const resetAt = selectPrimaryCodexSnapshot(report)?.secondary?.resetAt;
-  if (resetAt === undefined) return undefined;
-  return nextResetCountdownDelayForRemainingMs(resetAt - now);
+  const snapshot = selectPrimaryCodexSnapshot(report);
+  const resetTimes = [snapshot?.secondary?.resetAt];
+  if (isQuotaWindowExhausted(snapshot?.primary)) {
+    resetTimes.push(snapshot?.primary?.resetAt);
+  }
+  const delays = resetTimes
+    .filter((resetAt): resetAt is number => resetAt !== undefined)
+    .map((resetAt) => nextResetCountdownDelayForRemainingMs(resetAt - now))
+    .filter((delay): delay is number => delay !== undefined);
+  return delays.length > 0 ? Math.min(...delays) : undefined;
 }
 
 export function nextResetCountdownDelayForRemainingMs(
@@ -962,9 +983,13 @@ function formatStatuslineText(ctx: ExtensionContext, value: string): string {
   return `${label} ${ctx.ui.theme.fg("dim", value)}`;
 }
 
-function formatStatuslineBarText(ctx: ExtensionContext, bar: string): string {
+function formatStatuslineBarText(
+  ctx: ExtensionContext,
+  bar: string,
+  background: "selectedBg" | "toolErrorBg" = "selectedBg",
+): string {
   const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
-  const value = ctx.ui.theme.bg("selectedBg", ctx.ui.theme.fg("dim", bar));
+  const value = ctx.ui.theme.bg(background, ctx.ui.theme.fg("dim", bar));
   return `${label} ${value}`;
 }
 
@@ -1042,12 +1067,35 @@ function formatDualLimitBar(
 function filledTwentieths(
   window: NormalizedRateLimitWindow | undefined,
 ): number {
+  return filledParts(window, 20);
+}
+
+function filledParts(
+  window: NormalizedRateLimitWindow | undefined,
+  totalParts: number,
+): number {
   if (!window) return 0;
-  return Math.round(remainingPercent(window) / 5);
+  const remaining = remainingPercent(window);
+  if (remaining <= 0) return 0;
+  return Math.max(1, Math.round(remaining / (100 / totalParts)));
 }
 
 function remainingPercent(window: NormalizedRateLimitWindow): number {
   return 100 - clampPercent(window.usedPercent);
+}
+
+function isQuotaWindowExhausted(
+  window: NormalizedRateLimitWindow | undefined,
+): boolean {
+  return window !== undefined && remainingPercent(window) <= 0;
+}
+
+function hasExhaustedQuotaWindow(report: CodexUsageReport): boolean {
+  const snapshot = selectPrimaryCodexSnapshot(report);
+  return (
+    isQuotaWindowExhausted(snapshot?.primary) ||
+    isQuotaWindowExhausted(snapshot?.secondary)
+  );
 }
 
 function isPrimaryCodexSnapshot(

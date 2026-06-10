@@ -9,6 +9,7 @@ import {
   formatWeeklyResetCountdown,
   isUsageUnavailable,
   nextResetCountdownDelayForRemainingMs,
+  nextResetCountdownDelayMs,
   normalizeAppServerResponse,
   normalizeBackendPayload,
   type UsageQueryError,
@@ -123,6 +124,60 @@ test("formats the dual quota bar with 20 steps per window", () => {
       ],
     }),
     "▀▀▀▀▀⠀⠀⠀⠀⠀",
+  );
+});
+
+test("keeps positive remaining quota visible at the empty edge", () => {
+  assert.equal(
+    formatCodexUsageBar({
+      snapshots: [
+        {
+          limitId: "codex",
+          primary: { usedPercent: 100 },
+          secondary: { usedPercent: 100 },
+        },
+      ],
+    }),
+    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  );
+
+  assert.equal(
+    formatCodexUsageBar({
+      snapshots: [
+        {
+          limitId: "codex",
+          primary: { usedPercent: 99.9 },
+          secondary: { usedPercent: 100 },
+        },
+      ],
+    }),
+    "▘⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  );
+
+  assert.equal(
+    formatCodexUsageBar({
+      snapshots: [
+        {
+          limitId: "codex",
+          primary: { usedPercent: 98 },
+          secondary: { usedPercent: 98 },
+        },
+      ],
+    }),
+    "▌⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+  );
+
+  assert.equal(
+    formatCodexUsageBar({
+      snapshots: [
+        {
+          limitId: "codex",
+          primary: { usedPercent: 2 },
+          secondary: { usedPercent: 2 },
+        },
+      ],
+    }),
+    "██████████",
   );
 });
 
@@ -250,6 +305,47 @@ test("formats statusline countdown outside the quota bar background", () => {
   }
 });
 
+test("uses an error background when either quota window is exhausted", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  const originalDateNow = Date.now;
+  Date.now = () => now;
+  try {
+    assert.equal(
+      formatCodexUsageStatusline(
+        {
+          snapshots: [
+            {
+              limitId: "codex",
+              primary: { usedPercent: 100, resetAt: now + 5 * hourMs },
+              secondary: { usedPercent: 50, resetAt: now + 7 * dayMs },
+            },
+          ],
+        },
+        testCtx,
+      ),
+      "<fg:accent>codex</fg> <bg:toolErrorBg><fg:dim>▄▄▄▄▄⠀⠀⠀⠀⠀</fg></bg> <fg:dim>5h/7d</fg>",
+    );
+
+    assert.equal(
+      formatCodexUsageStatusline(
+        {
+          snapshots: [
+            {
+              limitId: "codex",
+              primary: { usedPercent: 50 },
+              secondary: { usedPercent: 100, resetAt: now + 7 * dayMs },
+            },
+          ],
+        },
+        testCtx,
+      ),
+      "<fg:accent>codex</fg> <bg:toolErrorBg><fg:dim>▀▀▀▀▀⠀⠀⠀⠀⠀</fg></bg> <fg:dim>7d</fg>",
+    );
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
 test("ignores non-codex usage buckets", () => {
   assert.equal(
     formatCodexUsageBar({
@@ -281,6 +377,63 @@ test("formats reusable compact Codex status values", () => {
       now,
     ),
     "▀▀▀▀▀⠀⠀⠀⠀⠀ 23h",
+  );
+});
+
+test("formats exhausted primary windows with the full dual bar", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  assert.equal(
+    formatCodexUsageStatusValue(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: { usedPercent: 100, resetAt: now + 5 * hourMs },
+            secondary: { usedPercent: 50, resetAt: now + 7 * dayMs },
+          },
+        ],
+      },
+      now,
+    ),
+    "▄▄▄▄▄⠀⠀⠀⠀⠀ 5h/7d",
+  );
+
+  assert.equal(
+    formatCodexUsageStatusValue(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: { usedPercent: 100 },
+            secondary: { usedPercent: 50, resetAt: now + 7 * dayMs },
+          },
+        ],
+      },
+      now,
+    ),
+    "▄▄▄▄▄⠀⠀⠀⠀⠀ 7d",
+  );
+});
+
+test("schedules exhausted primary countdown redraws by the nearest reset label", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  assert.equal(
+    nextResetCountdownDelayMs(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: {
+              usedPercent: 100,
+              resetAt: now + 59 * secondMs + 250,
+            },
+            secondary: { usedPercent: 50, resetAt: now + 7 * dayMs },
+          },
+        ],
+      },
+      now,
+    ),
+    251,
   );
 });
 

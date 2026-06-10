@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.0: Exhausted Quota Visibility
+
+- Added exhausted-quota warning background for the statusline quota bar. Impact: when either the 5-hour or weekly Codex window has 0% remaining, the bar keeps its shape but switches from the selected background to the error background for faster visual detection.
+- Added exhausted-primary countdown display for cases where the 5-hour Codex window has 0% remaining and exposes a reset time. Impact: the statusline keeps the normal ten-cell dual bar and appends `<5-hour-reset>/<weekly-reset>` countdowns, so operators can see both how long to wait for short-window recovery and how much weekly quota remains.
+- Fixed quota-bar rounding so a truly empty segment state is shown only when a quota window has 0% remaining, while any positive sub-5% remainder still renders as one visible step. Impact: the statusline now distinguishes exhausted Codex limits from tiny remaining quota without changing normal round-to-nearest behavior elsewhere.
+
 ## 0.6.0: Telegram Status Integration
 
 - Added optional `pi-telegram` status-menu integration through the public Telegram status-line provider API. When `pi-telegram` is available and the active model is an OpenAI Codex subscription model, the `/start` menu status text now includes `codex: <value>` using the same compact quota bar and reset countdown value as the terminal statusline. Impact: Telegram operators can see Codex quota/reset state in the main control menu without any extra configuration, while non-Codex models and missing `pi-telegram` installs stay unchanged.
