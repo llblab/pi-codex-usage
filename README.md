@@ -15,9 +15,11 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 ## Features
 
 - Shows an empty statusline bar immediately, then refreshes every 30 seconds while the active Pi model uses `openai-codex`
-- Statusline output stays compact, with the `codex` label accented and the quota bar plus weekly reset countdown drawn on a themed background
-- When `pi-telegram` is available, the same compact value appears as `codex: <value>` in the `/start` menu status text for active OpenAI Codex subscription models
-- Additional returned buckets, including Spark-specific limits, are ignored
+- Statusline output stays compact, with the active usage label accented and the quota bar plus weekly reset countdown drawn on a themed background
+- Regular Codex subscription models show the primary `codex` quota bucket
+- `GPT-5.3-Codex-Spark` shows the parallel Spark quota bucket with the `spark` label
+- When `pi-telegram` is available, the same compact value appears as `codex: <value>` or `spark: <value>` in the `/start` menu status text for active OpenAI Codex subscription models
+- Additional returned buckets unrelated to the active Codex/Spark model are ignored
 - Pi OpenAI Codex provider auth is used first
 - Codex CLI app-server remains available as a fallback
 - Missing auth, subscription, plan, or quota windows are shown as `n/a`, not as an error
@@ -41,10 +43,16 @@ pi install git:github.com/llblab/pi-codex-usage
 
 ## Statusline
 
-Normal usage:
+Regular Codex usage:
 
 ```text
 codex ██████▀▀▀▀ 6d
+```
+
+Spark model usage:
+
+```text
+spark ██████████ 7d
 ```
 
 The ten-character bar encodes two twenty-step limits at once: 40 total bits of quota state in 10 terminal cells. Each step is 5%: the top quadrants are the 5-hour limit, and the bottom quadrants are the weekly limit. If either quota window is exhausted, the bar keeps the same shape but switches to the error background color.
@@ -77,9 +85,10 @@ If `@llblab/pi-telegram` is loaded with the public status-line provider API, thi
 
 ```text
 codex: ██████▀▀▀▀ 6d
+spark: ██████████ 7d
 ```
 
-The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline. If `pi-telegram` is absent, older, or the active model is not a Codex subscription model, no Telegram row is added.
+The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline, and the label follows the active Codex/Spark model. If `pi-telegram` is absent, older, or the active model is not a Codex subscription model, no Telegram row is added.
 
 ## Auth
 

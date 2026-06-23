@@ -66,6 +66,49 @@ test("normalizes backend primary and secondary windows", () => {
   });
 });
 
+test("normalizes backend additional Spark limits", () => {
+  const capturedAt = Date.parse("2026-05-28T00:00:00.000Z");
+  const report = normalizeBackendPayload(
+    {
+      rate_limit: {
+        primary_window: { used_percent: 1 },
+        secondary_window: { used_percent: 92 },
+      },
+      additional_rate_limits: [
+        {
+          limit_name: "GPT-5.3-Codex-Spark",
+          metered_feature: "codex_bengalfox",
+          rate_limit: {
+            primary_window: { used_percent: 0 },
+            secondary_window: {
+              used_percent: 0,
+              reset_after_seconds: 604800,
+            },
+          },
+        },
+      ],
+    },
+    capturedAt,
+    "pi-auth",
+  );
+
+  assert.deepEqual(report.snapshots, [
+    {
+      limitId: "codex",
+      primary: { usedPercent: 1 },
+      secondary: { usedPercent: 92 },
+    },
+    {
+      limitId: "spark",
+      primary: { usedPercent: 0 },
+      secondary: {
+        usedPercent: 0,
+        resetAt: capturedAt + 604800 * 1000,
+      },
+    },
+  ]);
+});
+
 test("normalizes app-server array rate limits and merges duplicate limit ids", () => {
   const capturedAt = Date.parse("2026-05-28T00:00:00.000Z");
   const report = normalizeAppServerResponse(
@@ -358,6 +401,59 @@ test("ignores non-codex usage buckets", () => {
       ],
     }),
     undefined,
+  );
+});
+
+test("formats active Spark status values for GPT-5.3-Codex-Spark", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  const sparkModel = {
+    id: "gpt-5.3-codex-spark",
+    name: "GPT-5.3-Codex-Spark",
+    provider: "openai-codex",
+  };
+
+  assert.equal(
+    formatCodexUsageStatusValue(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: { usedPercent: 1 },
+            secondary: { usedPercent: 92, resetAt: now + 2 * dayMs },
+          },
+          {
+            limitId: "spark",
+            primary: { usedPercent: 0 },
+            secondary: { usedPercent: 0, resetAt: now + 7 * dayMs },
+          },
+        ],
+      },
+      sparkModel,
+      now,
+    ),
+    "██████████ 7d",
+  );
+
+  assert.equal(
+    formatCodexUsageStatusline(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: { usedPercent: 1 },
+            secondary: { usedPercent: 92, resetAt: now + 2 * dayMs },
+          },
+          {
+            limitId: "spark",
+            primary: { usedPercent: 0 },
+            secondary: { usedPercent: 0, resetAt: now + 7 * dayMs },
+          },
+        ],
+      },
+      testCtx,
+      sparkModel,
+    ).startsWith("<fg:accent>spark</fg>"),
+    true,
   );
 });
 

@@ -20,7 +20,11 @@ const REFRESH_INTERVAL_MS = 30 * SECOND_MS;
 const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "aa-codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
-const STATUS_LABEL_TEXT = "codex";
+const DEFAULT_STATUS_LABEL_TEXT = "codex";
+const SPARK_STATUS_LABEL_TEXT = "spark";
+const CODEX_USAGE_LIMIT_ID = "codex";
+const SPARK_USAGE_LIMIT_ID = "spark";
+const SPARK_MODEL_KEY = "gpt-5.3-codex-spark";
 const DUAL_BAR_WIDTH = 10;
 const TELEGRAM_STATUS_IMPORT_SPECIFIERS = [
   "@llblab/pi-telegram/status",
@@ -49,7 +53,7 @@ type UsageSource = "pi-auth" | "codex-app-server";
 type TimeoutHandle = ReturnType<typeof setTimeout> & { unref?: () => void };
 type PiModel = NonNullable<ExtensionContext["model"]>;
 export type CodexUsageModel = Pick<PiModel, "id" | "name" | "provider">;
-type CodexUsageTelegramStatusModel = Pick<PiModel, "provider">;
+type CodexUsageTelegramStatusModel = Pick<PiModel, "id" | "name" | "provider">;
 type TelegramStatusLineProviderResult =
   | { label: string; value: string }
   | undefined;
@@ -98,6 +102,13 @@ export type NormalizedRateLimitWindow = {
 };
 
 type RateLimitStatusPayload = {
+  rate_limit?: unknown;
+  additional_rate_limits?: unknown;
+};
+
+type BackendAdditionalRateLimit = {
+  limit_name?: unknown;
+  metered_feature?: unknown;
   rate_limit?: unknown;
 };
 
@@ -167,8 +178,8 @@ export default function codexUsage(pi: ExtensionAPI) {
       ({ activeModel }) => {
         if (!isOpenAICodexModel(activeModel)) return undefined;
         if (!cache) return undefined;
-        const value = formatCodexUsageStatusValue(cache.report);
-        return value ? { label: "codex", value } : undefined;
+        const value = formatCodexUsageStatusValue(cache.report, activeModel);
+        return value ? { label: activeUsageLabel(activeModel), value } : undefined;
       },
     )
       .then((unregister) => {
@@ -219,7 +230,7 @@ export default function codexUsage(pi: ExtensionAPI) {
     model: CodexUsageModel | undefined,
   ) => {
     if (statuslineCountdownTimer) clearTimeout(statuslineCountdownTimer);
-    const delayMs = nextResetCountdownDelayMs(report);
+    const delayMs = nextResetCountdownDelayMs(report, Date.now(), model);
     if (delayMs === undefined) {
       statuslineCountdownTimer = undefined;
       return;
@@ -268,11 +279,16 @@ export default function codexUsage(pi: ExtensionAPI) {
     else scheduleTemporaryStatuslineClear(ctx);
   };
 
-  const queryCurrentUsage = (ctx: ExtensionContext) => {
+  const queryCurrentUsage = (
+    ctx: ExtensionContext,
+    model: CodexUsageModel | undefined,
+  ) => {
     if (!inFlightUsageQuery) {
-      inFlightUsageQuery = queryUsage(ctx, {
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      }).finally(() => {
+      inFlightUsageQuery = queryUsage(
+        ctx,
+        { timeoutMs: DEFAULT_TIMEOUT_MS },
+        model,
+      ).finally(() => {
         inFlightUsageQuery = undefined;
       });
     }
@@ -305,7 +321,7 @@ export default function codexUsage(pi: ExtensionAPI) {
       return;
     }
 
-    const result = await queryCurrentUsage(ctx);
+    const result = await queryCurrentUsage(ctx, model);
     if (requestId !== statuslineRequestId) return;
     if (!isOpenAICodexModel(ctx.model)) {
       clearUsageStatusline(ctx);
@@ -373,6 +389,26 @@ function isOpenAICodexModel(
   return model?.provider === CODEX_PROVIDER_ID;
 }
 
+function isSparkCodexModel(
+  model: Pick<PiModel, "id" | "name" | "provider"> | undefined,
+): boolean {
+  if (!isOpenAICodexModel(model)) return false;
+  const key = `${model?.id ?? ""} ${model?.name ?? ""}`.toLowerCase();
+  return key.includes(SPARK_MODEL_KEY);
+}
+
+function activeUsageLimitId(
+  model: Pick<PiModel, "id" | "name" | "provider"> | undefined,
+): string {
+  return isSparkCodexModel(model) ? SPARK_USAGE_LIMIT_ID : CODEX_USAGE_LIMIT_ID;
+}
+
+function activeUsageLabel(
+  model: Pick<PiModel, "id" | "name" | "provider"> | undefined,
+): string {
+  return isSparkCodexModel(model) ? SPARK_STATUS_LABEL_TEXT : DEFAULT_STATUS_LABEL_TEXT;
+}
+
 async function importTelegramStatusLineModule(): Promise<
   TelegramStatusLineModule | undefined
 > {
@@ -401,25 +437,29 @@ async function registerCodexUsageTelegramStatusLine(
 async function queryUsage(
   ctx: ExtensionContext,
   options: Pick<QueryUsageOptions, "timeoutMs">,
+  model: CodexUsageModel | undefined,
 ): Promise<QueryUsageResult> {
   const errors: UsageQueryError[] = [];
+  const sources = isSparkCodexModel(model)
+    ? (["codex-app-server", "pi-auth"] as const)
+    : (["pi-auth", "codex-app-server"] as const);
 
-  try {
-    const report = await queryViaPiAuth(ctx, options.timeoutMs);
-    return { ok: true, report };
-  } catch (cause) {
-    errors.push({ source: "pi-auth", message: errorMessage(cause), cause });
-  }
-
-  try {
-    const report = await queryViaCodexAppServer(options.timeoutMs);
-    return { ok: true, report };
-  } catch (cause) {
-    errors.push({
-      source: "codex-app-server",
-      message: errorMessage(cause),
-      cause,
-    });
+  for (const source of sources) {
+    try {
+      const report =
+        source === "pi-auth"
+          ? await queryViaPiAuth(ctx, options.timeoutMs)
+          : await queryViaCodexAppServer(options.timeoutMs);
+      if (selectUsageSnapshot(report, activeUsageLimitId(model))) {
+        return { ok: true, report };
+      }
+      errors.push({
+        source,
+        message: `${source} returned no displayable ${activeUsageLabel(model)} rate-limit windows`,
+      });
+    } catch (cause) {
+      errors.push({ source, message: errorMessage(cause), cause });
+    }
   }
 
   return { ok: false, errors };
@@ -711,17 +751,42 @@ export function normalizeBackendPayload(
   _capturedAt: number,
   _source: UsageSource,
 ): CodexUsageReport {
-  const snapshot = normalizeBackendSnapshot(
-    "codex",
+  const snapshots: NormalizedRateLimitSnapshot[] = [];
+  const primarySnapshot = normalizeBackendSnapshot(
+    CODEX_USAGE_LIMIT_ID,
     payload.rate_limit,
     _capturedAt,
   );
-  if (!snapshot) {
+  if (primarySnapshot) snapshots.push(primarySnapshot);
+
+  if (Array.isArray(payload.additional_rate_limits)) {
+    for (const item of payload.additional_rate_limits) {
+      const additional = assertObject(
+        item,
+        "additional rate limit",
+      ) as BackendAdditionalRateLimit;
+      const snapshot = normalizeBackendSnapshot(
+        backendAdditionalLimitId(additional),
+        additional.rate_limit,
+        _capturedAt,
+      );
+      if (snapshot) snapshots.push(snapshot);
+    }
+  }
+
+  if (snapshots.length === 0) {
     throw new Error(
       "Codex usage endpoint returned no displayable rate-limit windows.",
     );
   }
-  return { snapshots: [snapshot] };
+  return { snapshots };
+}
+
+function backendAdditionalLimitId(limit: BackendAdditionalRateLimit): string {
+  const raw = `${asString(limit.limit_name) ?? ""} ${asString(limit.metered_feature) ?? ""}`;
+  return raw.toLowerCase().includes("spark")
+    ? SPARK_USAGE_LIMIT_ID
+    : normalizedUsageKey(raw) ?? CODEX_USAGE_LIMIT_ID;
 }
 
 function normalizeBackendSnapshot(
@@ -859,15 +924,16 @@ function mergeSnapshot(
 export function formatCodexUsageStatusline(
   report: CodexUsageReport,
   ctx: ExtensionContext,
-  _model?: CodexUsageModel,
+  model?: CodexUsageModel,
 ): string {
-  const value = formatCodexUsageStatusValue(report);
-  if (!value) return formatStatuslineText(ctx, "n/a");
+  const value = formatCodexUsageStatusValue(report, model);
+  if (!value) return formatStatuslineText(ctx, "n/a", model);
   const [bar, countdown] = value.split(" ", 2);
   const barText = formatStatuslineBarText(
     ctx,
     bar ?? "",
-    hasExhaustedQuotaWindow(report) ? "toolErrorBg" : "selectedBg",
+    hasExhaustedQuotaWindow(report, model) ? "toolErrorBg" : "selectedBg",
+    model,
   );
   return countdown
     ? `${barText} ${ctx.ui.theme.fg("dim", countdown)}`
@@ -882,31 +948,40 @@ export function formatCodexUsageBar(
 
 export function formatCodexUsageStatusValue(
   report: CodexUsageReport,
+  modelOrNow?: CodexUsageModel | number,
   now = Date.now(),
 ): string | undefined {
-  const snapshot = selectPrimaryCodexSnapshot(report);
+  const model = typeof modelOrNow === "number" ? undefined : modelOrNow;
+  const capturedNow = typeof modelOrNow === "number" ? modelOrNow : now;
+  const snapshot = selectActiveUsageSnapshot(report, model);
   if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
   const bar = formatDualLimitBar(snapshot.primary, snapshot.secondary);
   if (isQuotaWindowExhausted(snapshot.primary) && snapshot.primary?.resetAt) {
-    const primaryCountdown = formatResetCountdown(snapshot.primary.resetAt, now);
+    const primaryCountdown = formatResetCountdown(
+      snapshot.primary.resetAt,
+      capturedNow,
+    );
     const weeklyCountdown = snapshot.secondary?.resetAt
-      ? formatResetCountdown(snapshot.secondary.resetAt, now)
+      ? formatResetCountdown(snapshot.secondary.resetAt, capturedNow)
       : undefined;
     return weeklyCountdown
       ? `${bar} ${primaryCountdown}/${weeklyCountdown}`
       : `${bar} ${primaryCountdown}`;
   }
-  const countdown = formatWeeklyResetCountdown(report, now);
+  const countdown = formatWeeklyResetCountdown(report, model, capturedNow);
   return countdown ? `${bar} ${countdown}` : bar;
 }
 
 export function formatWeeklyResetCountdown(
   report: CodexUsageReport,
+  modelOrNow?: CodexUsageModel | number,
   now = Date.now(),
 ): string | undefined {
-  const resetAt = selectPrimaryCodexSnapshot(report)?.secondary?.resetAt;
+  const model = typeof modelOrNow === "number" ? undefined : modelOrNow;
+  const capturedNow = typeof modelOrNow === "number" ? modelOrNow : now;
+  const resetAt = selectActiveUsageSnapshot(report, model)?.secondary?.resetAt;
   if (resetAt === undefined) return undefined;
-  return formatResetCountdown(resetAt, now);
+  return formatResetCountdown(resetAt, capturedNow);
 }
 
 export function formatResetCountdown(
@@ -930,8 +1005,9 @@ export function formatResetCountdown(
 export function nextResetCountdownDelayMs(
   report: CodexUsageReport,
   now = Date.now(),
+  model?: CodexUsageModel,
 ): number | undefined {
-  const snapshot = selectPrimaryCodexSnapshot(report);
+  const snapshot = selectActiveUsageSnapshot(report, model);
   const resetTimes = [snapshot?.secondary?.resetAt];
   if (isQuotaWindowExhausted(snapshot?.primary)) {
     resetTimes.push(snapshot?.primary?.resetAt);
@@ -972,14 +1048,21 @@ function formatTenths(value: number): string {
   return value % 10 === 0 ? String(value / 10) : (value / 10).toFixed(1);
 }
 
-function formatReportBar(report: CodexUsageReport): string | undefined {
-  const snapshot = selectPrimaryCodexSnapshot(report);
+function formatReportBar(
+  report: CodexUsageReport,
+  model?: CodexUsageModel,
+): string | undefined {
+  const snapshot = selectActiveUsageSnapshot(report, model);
   if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
   return formatDualLimitBar(snapshot.primary, snapshot.secondary);
 }
 
-function formatStatuslineText(ctx: ExtensionContext, value: string): string {
-  const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
+function formatStatuslineText(
+  ctx: ExtensionContext,
+  value: string,
+  model?: CodexUsageModel,
+): string {
+  const label = ctx.ui.theme.fg("accent", activeUsageLabel(model));
   return `${label} ${ctx.ui.theme.fg("dim", value)}`;
 }
 
@@ -987,8 +1070,9 @@ function formatStatuslineBarText(
   ctx: ExtensionContext,
   bar: string,
   background: "selectedBg" | "toolErrorBg" = "selectedBg",
+  model?: CodexUsageModel,
 ): string {
-  const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
+  const label = ctx.ui.theme.fg("accent", activeUsageLabel(model));
   const value = ctx.ui.theme.bg(background, ctx.ui.theme.fg("dim", bar));
   return `${label} ${value}`;
 }
@@ -1001,7 +1085,7 @@ function formatStatuslineProblem(
   ctx: ExtensionContext,
   errors: UsageQueryError[],
 ): string {
-  const label = ctx.ui.theme.fg("accent", STATUS_LABEL_TEXT);
+  const label = ctx.ui.theme.fg("accent", DEFAULT_STATUS_LABEL_TEXT);
   const value = isUsageUnavailable(errors)
     ? ctx.ui.theme.fg("muted", "n/a")
     : ctx.ui.theme.fg("error", "error");
@@ -1028,12 +1112,6 @@ function isUnavailableError(error: UsageQueryError): boolean {
     message.includes("quota unavailable") ||
     message.includes("rate limits unavailable")
   );
-}
-
-function selectPrimaryCodexSnapshot(
-  report: CodexUsageReport,
-): NormalizedRateLimitSnapshot | undefined {
-  return report.snapshots.find(isPrimaryCodexSnapshot);
 }
 
 function normalizedUsageKey(value: string | undefined): string | undefined {
@@ -1090,18 +1168,32 @@ function isQuotaWindowExhausted(
   return window !== undefined && remainingPercent(window) <= 0;
 }
 
-function hasExhaustedQuotaWindow(report: CodexUsageReport): boolean {
-  const snapshot = selectPrimaryCodexSnapshot(report);
+function hasExhaustedQuotaWindow(
+  report: CodexUsageReport,
+  model?: CodexUsageModel,
+): boolean {
+  const snapshot = selectActiveUsageSnapshot(report, model);
   return (
     isQuotaWindowExhausted(snapshot?.primary) ||
     isQuotaWindowExhausted(snapshot?.secondary)
   );
 }
 
-function isPrimaryCodexSnapshot(
-  snapshot: NormalizedRateLimitSnapshot,
-): boolean {
-  return normalizedUsageKey(snapshot.limitId) === "codex";
+function selectActiveUsageSnapshot(
+  report: CodexUsageReport,
+  model: CodexUsageModel | undefined,
+): NormalizedRateLimitSnapshot | undefined {
+  return selectUsageSnapshot(report, activeUsageLimitId(model));
+}
+
+function selectUsageSnapshot(
+  report: CodexUsageReport,
+  limitId: string,
+): NormalizedRateLimitSnapshot | undefined {
+  const normalizedLimitId = normalizedUsageKey(limitId);
+  return report.snapshots.find(
+    (snapshot) => normalizedUsageKey(snapshot.limitId) === normalizedLimitId,
+  );
 }
 
 function clampPercent(value: number): number {

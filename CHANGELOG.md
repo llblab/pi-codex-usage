@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.8.0: Spark Model Usage Status
+
+- Added active-bucket status support for `GPT-5.3-Codex-Spark`. Impact: selecting the Spark Codex subscription model now shows the parallel Spark rate-limit bucket with a `spark` label, while regular Codex models keep the existing `codex` bucket/status behavior.
+- Added parsing for backend `additional_rate_limits`, including the Spark `GPT-5.3-Codex-Spark` / `codex_bengalfox` limit. Impact: Spark quota can be shown from the same Pi-auth usage response path as normal Codex quota instead of relying only on app-server fallback.
+
 ## 0.7.0: Exhausted Quota Visibility
 
 - Added exhausted-quota warning background for the statusline quota bar. Impact: when either the 5-hour or weekly Codex window has 0% remaining, the bar keeps its shape but switches from the selected background to the error background for faster visual detection.
