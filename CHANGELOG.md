@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.8.1: Stale Context Hotfix
+
+- Fixed stale extension context crashes from delayed statusline timers after Pi session replacement or reload. Impact: timers now ignore stale `ctx` failures instead of letting issue #1 crash Pi after idle/session lifecycle changes.
+- Fixed Codex/Spark refresh state to key in-flight usage lookups by active quota bucket and only reuse cached reports that contain the active bucket. Impact: switching between regular Codex and Spark no longer temporarily renders the active bucket as unavailable because of a stale request/cache.
+- Fixed Spark failure labels. Impact: Spark unavailable/error states now render with the `spark` label instead of falling back to `codex`.
+- Added regression coverage for active-bucket cache reuse and stale extension context error detection.
+
 ## 0.8.0: Spark Model Usage Status
 
 - Added active-bucket status support for `GPT-5.3-Codex-Spark`. Impact: selecting the Spark Codex subscription model now shows the parallel Spark rate-limit bucket with a `spark` label, while regular Codex models keep the existing `codex` bucket/status behavior.

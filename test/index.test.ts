@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canReuseCachedReport,
   formatCodexUsageBar,
   formatCodexUsageStatusValue,
   formatCodexUsageStatusline,
   formatResetCountdown,
   formatWeeklyResetCountdown,
+  isStaleExtensionContextError,
   isUsageUnavailable,
   nextResetCountdownDelayForRemainingMs,
   nextResetCountdownDelayMs,
@@ -26,6 +28,18 @@ const hourMs = 60 * minuteMs;
 const hourTenthMs = 6 * minuteMs;
 const dayMs = 24 * hourMs;
 const dayTenthMs = 144 * minuteMs;
+
+const codexModel = {
+  id: "gpt-5.3-codex",
+  name: "GPT-5.3-Codex",
+  provider: "openai-codex",
+};
+
+const sparkModel = {
+  id: "gpt-5.3-codex-spark",
+  name: "GPT-5.3-Codex-Spark",
+  provider: "openai-codex",
+};
 
 const testCtx = {
   ui: {
@@ -406,11 +420,6 @@ test("ignores non-codex usage buckets", () => {
 
 test("formats active Spark status values for GPT-5.3-Codex-Spark", () => {
   const now = Date.parse("2026-05-28T00:00:00.000Z");
-  const sparkModel = {
-    id: "gpt-5.3-codex-spark",
-    name: "GPT-5.3-Codex-Spark",
-    provider: "openai-codex",
-  };
 
   assert.equal(
     formatCodexUsageStatusValue(
@@ -554,6 +563,42 @@ test("formats weekly reset countdown from the secondary codex window", () => {
     ),
     "3h",
   );
+});
+
+test("reuses cached reports only when they contain the active bucket", () => {
+  const codexReport = {
+    snapshots: [
+      {
+        limitId: "codex",
+        primary: { usedPercent: 10 },
+        secondary: { usedPercent: 20 },
+      },
+    ],
+  };
+  const sparkReport = {
+    snapshots: [
+      {
+        limitId: "spark",
+        primary: { usedPercent: 0 },
+        secondary: { usedPercent: 0 },
+      },
+    ],
+  };
+
+  assert.equal(canReuseCachedReport(codexReport, codexModel), true);
+  assert.equal(canReuseCachedReport(codexReport, sparkModel), false);
+  assert.equal(canReuseCachedReport(sparkReport, sparkModel), true);
+});
+
+test("detects stale extension context errors", () => {
+  assert.equal(
+    isStaleExtensionContextError(
+      new Error("This extension ctx is stale after session replacement or reload."),
+    ),
+    true,
+  );
+  assert.equal(isStaleExtensionContextError(new Error("network failed")), false);
+  assert.equal(isStaleExtensionContextError("ctx is stale"), false);
 });
 
 test("classifies n/a only when all query failures are unavailable states", () => {

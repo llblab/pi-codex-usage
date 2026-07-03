@@ -163,7 +163,9 @@ type PendingRpc = {
 export default function codexUsage(pi: ExtensionAPI) {
   let cache: CachedReport | undefined;
   let failedRefreshes = 0;
-  let inFlightUsageQuery: Promise<QueryUsageResult> | undefined;
+  let inFlightUsageQuery:
+    | { limitId: string; promise: Promise<QueryUsageResult> }
+    | undefined;
   let statuslineBlinkTimer: TimeoutHandle | undefined;
   let statuslineClearTimer: TimeoutHandle | undefined;
   let statuslineCountdownTimer: TimeoutHandle | undefined;
@@ -210,8 +212,12 @@ export default function codexUsage(pi: ExtensionAPI) {
   const scheduleTemporaryStatuslineClear = (ctx: ExtensionContext) => {
     if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
     statuslineClearTimer = setTimeout(() => {
-      ctx.ui.setStatus(STATUS_KEY, undefined);
-      statuslineClearTimer = undefined;
+      try {
+        ctx.ui.setStatus(STATUS_KEY, undefined);
+        statuslineClearTimer = undefined;
+      } catch (error) {
+        handleTimerError(error);
+      }
     }, REFRESH_INTERVAL_MS) as TimeoutHandle;
     statuslineClearTimer.unref?.();
   };
@@ -219,7 +225,7 @@ export default function codexUsage(pi: ExtensionAPI) {
   const scheduleStatuslineRefresh = (ctx: ExtensionContext) => {
     if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
     statuslineRefreshTimer = setTimeout(() => {
-      void refreshCurrentCodexUsageStatusline(ctx, true);
+      void refreshCurrentCodexUsageStatusline(ctx, true).catch(handleAsyncTimerError);
     }, REFRESH_INTERVAL_MS) as TimeoutHandle;
     statuslineRefreshTimer.unref?.();
   };
@@ -236,12 +242,16 @@ export default function codexUsage(pi: ExtensionAPI) {
       return;
     }
     statuslineCountdownTimer = setTimeout(() => {
-      if (isOpenAICodexModel(ctx.model)) {
-        ctx.ui.setStatus(
-          STATUS_KEY,
-          formatCodexUsageStatusline(report, ctx, model),
-        );
-        scheduleStatuslineCountdown(ctx, report, model);
+      try {
+        if (isOpenAICodexModel(ctx.model)) {
+          ctx.ui.setStatus(
+            STATUS_KEY,
+            formatCodexUsageStatusline(report, ctx, model),
+          );
+          scheduleStatuslineCountdown(ctx, report, model);
+        }
+      } catch (error) {
+        handleTimerError(error);
       }
     }, delayMs) as TimeoutHandle;
     statuslineCountdownTimer.unref?.();
@@ -266,9 +276,13 @@ export default function codexUsage(pi: ExtensionAPI) {
     if (options.blink) {
       ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
       statuslineBlinkTimer = setTimeout(() => {
-        ctx.ui.setStatus(STATUS_KEY, text);
-        scheduleStatuslineCountdown(ctx, report, options.model);
-        statuslineBlinkTimer = undefined;
+        try {
+          ctx.ui.setStatus(STATUS_KEY, text);
+          scheduleStatuslineCountdown(ctx, report, options.model);
+          statuslineBlinkTimer = undefined;
+        } catch (error) {
+          handleTimerError(error);
+        }
       }, REDRAW_BLINK_MS) as TimeoutHandle;
       statuslineBlinkTimer.unref?.();
     } else {
@@ -283,74 +297,87 @@ export default function codexUsage(pi: ExtensionAPI) {
     ctx: ExtensionContext,
     model: CodexUsageModel | undefined,
   ) => {
-    if (!inFlightUsageQuery) {
-      inFlightUsageQuery = queryUsage(
-        ctx,
-        { timeoutMs: DEFAULT_TIMEOUT_MS },
-        model,
-      ).finally(() => {
-        inFlightUsageQuery = undefined;
-      });
-    }
-    return inFlightUsageQuery;
+    const limitId = activeUsageLimitId(model);
+    if (inFlightUsageQuery?.limitId === limitId) return inFlightUsageQuery.promise;
+    const promise = queryUsage(
+      ctx,
+      { timeoutMs: DEFAULT_TIMEOUT_MS },
+      model,
+    ).finally(() => {
+      if (inFlightUsageQuery?.promise === promise) inFlightUsageQuery = undefined;
+    });
+    inFlightUsageQuery = { limitId, promise };
+    return promise;
   };
 
   const refreshCurrentCodexUsageStatusline = async (
     ctx: ExtensionContext,
     force: boolean,
-    model = ctx.model,
+    model?: CodexUsageModel,
   ) => {
-    if (!isOpenAICodexModel(model)) {
-      clearUsageStatusline(ctx);
-      return;
-    }
-
-    if (!cache) ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
-    const requestId = statuslineRequestId + 1;
-    statuslineRequestId = requestId;
-    const cached =
-      cache && Date.now() - cache.createdAt < REFRESH_INTERVAL_MS
-        ? cache
-        : undefined;
-    if (cached && !force) {
-      setUsageStatusline(ctx, cached.report, {
-        autoRefresh: true,
-        blink: false,
-        model,
-      });
-      return;
-    }
-
-    const result = await queryCurrentUsage(ctx, model);
-    if (requestId !== statuslineRequestId) return;
-    if (!isOpenAICodexModel(ctx.model)) {
-      clearUsageStatusline(ctx);
-      return;
-    }
-
-    if (!result.ok) {
-      failedRefreshes += 1;
-      if (!cache || failedRefreshes >= 5) {
-        ctx.ui.setStatus(
-          STATUS_KEY,
-          formatStatuslineProblem(ctx, result.errors),
-        );
+    try {
+      const activeModel = model ?? ctx.model;
+      if (!isOpenAICodexModel(activeModel)) {
+        clearUsageStatusline(ctx);
+        return;
       }
-      scheduleStatuslineRefresh(ctx);
-      return;
-    }
 
-    const previousReport = cache?.report;
-    const blink = previousReport
-      ? formatReportBar(previousReport) !== formatReportBar(result.report)
-      : false;
-    failedRefreshes = 0;
-    cache = { createdAt: Date.now(), report: result.report };
-    setUsageStatusline(ctx, result.report, {
-      autoRefresh: true,
-      blink,
-      model,
-    });
+      if (!cache) ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
+      const requestId = statuslineRequestId + 1;
+      statuslineRequestId = requestId;
+      const cached =
+        cache &&
+        Date.now() - cache.createdAt < REFRESH_INTERVAL_MS &&
+        canReuseCachedReport(cache.report, activeModel)
+          ? cache
+          : undefined;
+      if (cached && !force) {
+        setUsageStatusline(ctx, cached.report, {
+          autoRefresh: true,
+          blink: false,
+          model: activeModel,
+        });
+        return;
+      }
+
+      const result = await queryCurrentUsage(ctx, activeModel);
+      if (requestId !== statuslineRequestId) return;
+      if (!isOpenAICodexModel(ctx.model)) {
+        clearUsageStatusline(ctx);
+        return;
+      }
+
+      if (!result.ok) {
+        failedRefreshes += 1;
+        if (!cache || failedRefreshes >= 5) {
+          ctx.ui.setStatus(
+            STATUS_KEY,
+            formatStatuslineProblem(ctx, result.errors, activeModel),
+          );
+        }
+        scheduleStatuslineRefresh(ctx);
+        return;
+      }
+
+      const previousReport = cache?.report;
+      const blink = previousReport
+        ? formatReportBar(previousReport, activeModel) !==
+          formatReportBar(result.report, activeModel)
+        : false;
+      failedRefreshes = 0;
+      cache = { createdAt: Date.now(), report: result.report };
+      setUsageStatusline(ctx, result.report, {
+        autoRefresh: true,
+        blink,
+        model: activeModel,
+      });
+    } catch (error) {
+      if (isStaleExtensionContextError(error)) {
+        clearStatuslineTimers();
+        return;
+      }
+      throw error;
+    }
   };
 
   ensureTelegramStatusLineRegistered();
@@ -358,19 +385,19 @@ export default function codexUsage(pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     ensureTelegramStatusLineRegistered();
     if (isOpenAICodexModel(ctx.model))
-      void refreshCurrentCodexUsageStatusline(ctx, false);
+      void refreshCurrentCodexUsageStatusline(ctx, false).catch(handleAsyncTimerError);
     else clearUsageStatusline(ctx);
   });
 
   pi.on("session_tree", (_event, ctx) => {
     if (isOpenAICodexModel(ctx.model))
-      void refreshCurrentCodexUsageStatusline(ctx, false);
+      void refreshCurrentCodexUsageStatusline(ctx, false).catch(handleAsyncTimerError);
     else clearUsageStatusline(ctx);
   });
 
   pi.on("model_select", (event, ctx) => {
     if (isOpenAICodexModel(event.model)) {
-      void refreshCurrentCodexUsageStatusline(ctx, false, event.model);
+      void refreshCurrentCodexUsageStatusline(ctx, false, event.model).catch(handleAsyncTimerError);
     } else {
       clearUsageStatusline(ctx);
     }
@@ -381,6 +408,19 @@ export default function codexUsage(pi: ExtensionAPI) {
     unregisterTelegramStatusLine?.();
     unregisterTelegramStatusLine = undefined;
   });
+}
+
+function handleAsyncTimerError(error: unknown): void {
+  handleTimerError(error);
+}
+
+function handleTimerError(error: unknown): void {
+  if (isStaleExtensionContextError(error)) return;
+  throw error;
+}
+
+export function isStaleExtensionContextError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("ctx is stale");
 }
 
 function isOpenAICodexModel(
@@ -1084,8 +1124,9 @@ function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
 function formatStatuslineProblem(
   ctx: ExtensionContext,
   errors: UsageQueryError[],
+  model?: CodexUsageModel,
 ): string {
-  const label = ctx.ui.theme.fg("accent", DEFAULT_STATUS_LABEL_TEXT);
+  const label = ctx.ui.theme.fg("accent", activeUsageLabel(model));
   const value = isUsageUnavailable(errors)
     ? ctx.ui.theme.fg("muted", "n/a")
     : ctx.ui.theme.fg("error", "error");
@@ -1177,6 +1218,13 @@ function hasExhaustedQuotaWindow(
     isQuotaWindowExhausted(snapshot?.primary) ||
     isQuotaWindowExhausted(snapshot?.secondary)
   );
+}
+
+export function canReuseCachedReport(
+  report: CodexUsageReport,
+  model: CodexUsageModel | undefined,
+): boolean {
+  return selectActiveUsageSnapshot(report, model) !== undefined;
 }
 
 function selectActiveUsageSnapshot(
