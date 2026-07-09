@@ -17,6 +17,9 @@ const HOUR_TENTH_MS = 6 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const DAY_TENTH_MS = 144 * MINUTE_MS;
 const REFRESH_INTERVAL_MS = 30 * SECOND_MS;
+const PROVISIONAL_RETRY_MS = SECOND_MS;
+const FULL_AVAILABILITY_CONFIRMATION_MS = 15 * SECOND_MS;
+const LOADING_FRAME_MS = 30;
 const REDRAW_BLINK_MS = 150;
 const STATUS_KEY = "aa-codex-usage";
 const MAX_ERROR_BODY_CHARS = 600;
@@ -55,8 +58,7 @@ type PiModel = NonNullable<ExtensionContext["model"]>;
 export type CodexUsageModel = Pick<PiModel, "id" | "name" | "provider">;
 type CodexUsageTelegramStatusModel = Pick<PiModel, "id" | "name" | "provider">;
 type TelegramStatusLineProviderResult =
-  | { label: string; value: string }
-  | undefined;
+  { label: string; value: string } | undefined;
 type TelegramStatusLineProvider = (ctx: {
   activeModel?: CodexUsageTelegramStatusModel;
 }) => TelegramStatusLineProviderResult;
@@ -164,13 +166,17 @@ export default function codexUsage(pi: ExtensionAPI) {
   let cache: CachedReport | undefined;
   let failedRefreshes = 0;
   let inFlightUsageQuery:
-    | { limitId: string; promise: Promise<QueryUsageResult> }
-    | undefined;
+    { limitId: string; promise: Promise<QueryUsageResult> } | undefined;
   let statuslineBlinkTimer: TimeoutHandle | undefined;
   let statuslineClearTimer: TimeoutHandle | undefined;
   let statuslineCountdownTimer: TimeoutHandle | undefined;
+  let statuslineLoadingTimer: TimeoutHandle | undefined;
   let statuslineRefreshTimer: TimeoutHandle | undefined;
+  let statuslineLoadingFrame = 0;
+  let statuslineLoadingLimitId: string | undefined;
   let statuslineRequestId = 0;
+  let provisionalFullReport:
+    { limitId: string; firstSeenAt: number } | undefined;
   let unregisterTelegramStatusLine: (() => void) | undefined;
   let telegramStatusLineRegistration: Promise<void> | undefined;
 
@@ -181,7 +187,9 @@ export default function codexUsage(pi: ExtensionAPI) {
         if (!isOpenAICodexModel(activeModel)) return undefined;
         if (!cache) return undefined;
         const value = formatCodexUsageStatusValue(cache.report, activeModel);
-        return value ? { label: activeUsageLabel(activeModel), value } : undefined;
+        return value
+          ? { label: activeUsageLabel(activeModel), value }
+          : undefined;
       },
     )
       .then((unregister) => {
@@ -196,11 +204,49 @@ export default function codexUsage(pi: ExtensionAPI) {
     if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
     if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
     if (statuslineCountdownTimer) clearTimeout(statuslineCountdownTimer);
+    if (statuslineLoadingTimer) clearTimeout(statuslineLoadingTimer);
     if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
     statuslineBlinkTimer = undefined;
     statuslineClearTimer = undefined;
     statuslineCountdownTimer = undefined;
+    statuslineLoadingTimer = undefined;
+    statuslineLoadingLimitId = undefined;
     statuslineRefreshTimer = undefined;
+  };
+
+  const stopStatuslineLoading = () => {
+    if (statuslineLoadingTimer) clearTimeout(statuslineLoadingTimer);
+    statuslineLoadingTimer = undefined;
+    statuslineLoadingLimitId = undefined;
+  };
+
+  const startStatuslineLoading = (
+    ctx: ExtensionContext,
+    model: CodexUsageModel | undefined,
+  ) => {
+    const limitId = activeUsageLimitId(model);
+    if (statuslineLoadingTimer && statuslineLoadingLimitId === limitId) return;
+    stopStatuslineLoading();
+    statuslineLoadingFrame = Math.random() < 0.5 ? 0 : DUAL_BAR_WIDTH * 2 - 1;
+    statuslineLoadingLimitId = limitId;
+    const drawNextFrame = () => {
+      try {
+        ctx.ui.setStatus(
+          STATUS_KEY,
+          formatStatuslineLoading(ctx, statuslineLoadingFrame, model),
+        );
+        statuslineLoadingFrame += 1;
+        statuslineLoadingTimer = setTimeout(
+          drawNextFrame,
+          LOADING_FRAME_MS,
+        ) as TimeoutHandle;
+        statuslineLoadingTimer.unref?.();
+      } catch (error) {
+        statuslineLoadingTimer = undefined;
+        handleTimerError(error);
+      }
+    };
+    drawNextFrame();
   };
 
   const clearUsageStatusline = (ctx: ExtensionContext) => {
@@ -222,11 +268,16 @@ export default function codexUsage(pi: ExtensionAPI) {
     statuslineClearTimer.unref?.();
   };
 
-  const scheduleStatuslineRefresh = (ctx: ExtensionContext) => {
+  const scheduleStatuslineRefresh = (
+    ctx: ExtensionContext,
+    delayMs = REFRESH_INTERVAL_MS,
+  ) => {
     if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
     statuslineRefreshTimer = setTimeout(() => {
-      void refreshCurrentCodexUsageStatusline(ctx, true).catch(handleAsyncTimerError);
-    }, REFRESH_INTERVAL_MS) as TimeoutHandle;
+      void refreshCurrentCodexUsageStatusline(ctx, true).catch(
+        handleAsyncTimerError,
+      );
+    }, delayMs) as TimeoutHandle;
     statuslineRefreshTimer.unref?.();
   };
 
@@ -269,12 +320,16 @@ export default function codexUsage(pi: ExtensionAPI) {
     if (statuslineBlinkTimer) clearTimeout(statuslineBlinkTimer);
     if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
     if (statuslineCountdownTimer) clearTimeout(statuslineCountdownTimer);
+    stopStatuslineLoading();
     statuslineBlinkTimer = undefined;
     statuslineClearTimer = undefined;
     statuslineCountdownTimer = undefined;
     const text = formatCodexUsageStatusline(report, ctx, options.model);
     if (options.blink) {
-      ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
+      ctx.ui.setStatus(
+        STATUS_KEY,
+        formatStatuslineLoading(ctx, statuslineLoadingFrame, options.model),
+      );
       statuslineBlinkTimer = setTimeout(() => {
         try {
           ctx.ui.setStatus(STATUS_KEY, text);
@@ -298,13 +353,15 @@ export default function codexUsage(pi: ExtensionAPI) {
     model: CodexUsageModel | undefined,
   ) => {
     const limitId = activeUsageLimitId(model);
-    if (inFlightUsageQuery?.limitId === limitId) return inFlightUsageQuery.promise;
+    if (inFlightUsageQuery?.limitId === limitId)
+      return inFlightUsageQuery.promise;
     const promise = queryUsage(
       ctx,
       { timeoutMs: DEFAULT_TIMEOUT_MS },
       model,
     ).finally(() => {
-      if (inFlightUsageQuery?.promise === promise) inFlightUsageQuery = undefined;
+      if (inFlightUsageQuery?.promise === promise)
+        inFlightUsageQuery = undefined;
     });
     inFlightUsageQuery = { limitId, promise };
     return promise;
@@ -322,17 +379,27 @@ export default function codexUsage(pi: ExtensionAPI) {
         return;
       }
 
-      if (!cache) ctx.ui.setStatus(STATUS_KEY, formatEmptyStatuslineBar(ctx));
-      const requestId = statuslineRequestId + 1;
-      statuslineRequestId = requestId;
-      const cached =
-        cache &&
-        Date.now() - cache.createdAt < REFRESH_INTERVAL_MS &&
-        canReuseCachedReport(cache.report, activeModel)
+      const usableCache =
+        cache && canReuseCachedReport(cache.report, activeModel)
           ? cache
           : undefined;
-      if (cached && !force) {
-        setUsageStatusline(ctx, cached.report, {
+      if (usableCache) {
+        setUsageStatusline(ctx, usableCache.report, {
+          autoRefresh: true,
+          blink: false,
+          model: activeModel,
+        });
+      } else {
+        startStatuslineLoading(ctx, activeModel);
+      }
+      const requestId = statuslineRequestId + 1;
+      statuslineRequestId = requestId;
+      const freshCache =
+        usableCache && Date.now() - usableCache.createdAt < REFRESH_INTERVAL_MS
+          ? usableCache
+          : undefined;
+      if (freshCache && !force) {
+        setUsageStatusline(ctx, freshCache.report, {
           autoRefresh: true,
           blink: false,
           model: activeModel,
@@ -349,7 +416,12 @@ export default function codexUsage(pi: ExtensionAPI) {
 
       if (!result.ok) {
         failedRefreshes += 1;
-        if (!cache || failedRefreshes >= 5) {
+        const activeCache =
+          cache && canReuseCachedReport(cache.report, activeModel)
+            ? cache
+            : undefined;
+        if (!activeCache || failedRefreshes >= 5) {
+          stopStatuslineLoading();
           ctx.ui.setStatus(
             STATUS_KEY,
             formatStatuslineProblem(ctx, result.errors, activeModel),
@@ -360,11 +432,34 @@ export default function codexUsage(pi: ExtensionAPI) {
       }
 
       const previousReport = cache?.report;
+      const previousWasFullyAvailable = previousReport
+        ? isFullyAvailableReport(previousReport, activeModel)
+        : false;
+      if (
+        isFullyAvailableReport(result.report, activeModel) &&
+        !previousWasFullyAvailable
+      ) {
+        const now = Date.now();
+        const limitId = activeUsageLimitId(activeModel);
+        if (provisionalFullReport?.limitId !== limitId) {
+          provisionalFullReport = { limitId, firstSeenAt: now };
+        }
+        if (
+          now - provisionalFullReport.firstSeenAt <
+          FULL_AVAILABILITY_CONFIRMATION_MS
+        ) {
+          scheduleStatuslineRefresh(ctx, PROVISIONAL_RETRY_MS);
+          return;
+        }
+      } else {
+        provisionalFullReport = undefined;
+      }
       const blink = previousReport
         ? formatReportBar(previousReport, activeModel) !==
           formatReportBar(result.report, activeModel)
         : false;
       failedRefreshes = 0;
+      provisionalFullReport = undefined;
       cache = { createdAt: Date.now(), report: result.report };
       setUsageStatusline(ctx, result.report, {
         autoRefresh: true,
@@ -385,19 +480,25 @@ export default function codexUsage(pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     ensureTelegramStatusLineRegistered();
     if (isOpenAICodexModel(ctx.model))
-      void refreshCurrentCodexUsageStatusline(ctx, false).catch(handleAsyncTimerError);
+      void refreshCurrentCodexUsageStatusline(ctx, false).catch(
+        handleAsyncTimerError,
+      );
     else clearUsageStatusline(ctx);
   });
 
   pi.on("session_tree", (_event, ctx) => {
     if (isOpenAICodexModel(ctx.model))
-      void refreshCurrentCodexUsageStatusline(ctx, false).catch(handleAsyncTimerError);
+      void refreshCurrentCodexUsageStatusline(ctx, false).catch(
+        handleAsyncTimerError,
+      );
     else clearUsageStatusline(ctx);
   });
 
   pi.on("model_select", (event, ctx) => {
     if (isOpenAICodexModel(event.model)) {
-      void refreshCurrentCodexUsageStatusline(ctx, false, event.model).catch(handleAsyncTimerError);
+      void refreshCurrentCodexUsageStatusline(ctx, false, event.model).catch(
+        handleAsyncTimerError,
+      );
     } else {
       clearUsageStatusline(ctx);
     }
@@ -446,7 +547,9 @@ function activeUsageLimitId(
 function activeUsageLabel(
   model: Pick<PiModel, "id" | "name" | "provider"> | undefined,
 ): string {
-  return isSparkCodexModel(model) ? SPARK_STATUS_LABEL_TEXT : DEFAULT_STATUS_LABEL_TEXT;
+  return isSparkCodexModel(model)
+    ? SPARK_STATUS_LABEL_TEXT
+    : DEFAULT_STATUS_LABEL_TEXT;
 }
 
 async function importTelegramStatusLineModule(): Promise<
@@ -826,7 +929,7 @@ function backendAdditionalLimitId(limit: BackendAdditionalRateLimit): string {
   const raw = `${asString(limit.limit_name) ?? ""} ${asString(limit.metered_feature) ?? ""}`;
   return raw.toLowerCase().includes("spark")
     ? SPARK_USAGE_LIMIT_ID
-    : normalizedUsageKey(raw) ?? CODEX_USAGE_LIMIT_ID;
+    : (normalizedUsageKey(raw) ?? CODEX_USAGE_LIMIT_ID);
 }
 
 function normalizeBackendSnapshot(
@@ -1117,8 +1220,33 @@ function formatStatuslineBarText(
   return `${label} ${value}`;
 }
 
-function formatEmptyStatuslineBar(ctx: ExtensionContext): string {
-  return formatStatuslineBarText(ctx, DUAL_BAR_CHARS[0].repeat(DUAL_BAR_WIDTH));
+export function formatCodexUsageLoadingBar(frame: number): string {
+  const totalParts = DUAL_BAR_WIDTH * 2;
+  const cycleFrames = (totalParts - 1) * 2;
+  const finiteFrame = Number.isFinite(frame) ? frame : 0;
+  const cycleFrame = Math.abs(Math.trunc(finiteFrame)) % cycleFrames;
+  const primaryPart =
+    cycleFrame < totalParts ? cycleFrame : cycleFrames - cycleFrame;
+  const secondaryPart = totalParts - primaryPart - 1;
+  const masks = Array<number>(DUAL_BAR_WIDTH).fill(0);
+  const primaryCell = Math.floor(primaryPart / 2);
+  const secondaryCell = Math.floor(secondaryPart / 2);
+  masks[primaryCell] |= primaryPart % 2 === 0 ? 1 : 2;
+  masks[secondaryCell] |= secondaryPart % 2 === 0 ? 4 : 8;
+  return masks.map((mask) => DUAL_BAR_CHARS[mask]).join("");
+}
+
+function formatStatuslineLoading(
+  ctx: ExtensionContext,
+  frame: number,
+  model?: CodexUsageModel,
+): string {
+  return formatStatuslineBarText(
+    ctx,
+    formatCodexUsageLoadingBar(frame),
+    "selectedBg",
+    model,
+  );
 }
 
 function formatStatuslineProblem(
@@ -1225,6 +1353,19 @@ export function canReuseCachedReport(
   model: CodexUsageModel | undefined,
 ): boolean {
   return selectActiveUsageSnapshot(report, model) !== undefined;
+}
+
+export function isFullyAvailableReport(
+  report: CodexUsageReport,
+  model?: CodexUsageModel,
+): boolean {
+  const snapshot = selectActiveUsageSnapshot(report, model);
+  return (
+    snapshot?.primary !== undefined &&
+    snapshot.secondary !== undefined &&
+    clampPercent(snapshot.primary.usedPercent) === 0 &&
+    clampPercent(snapshot.secondary.usedPercent) === 0
+  );
 }
 
 function selectActiveUsageSnapshot(

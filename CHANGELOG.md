@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.8.2: Quota Loading Hotfix
+
+- Replaced the static empty request placeholder with fixed-width upper and lower markers that move in opposite directions through their respective quota bars, reverse at the ends, and randomly start from either mirrored endpoint phase, using the normal themed bar background. Impact: motion distinguishes startup and model-bucket loading from 100% available quota while preserving the dual-window visual language.
+- Kept the last usable active-bucket report visible while refreshing, including when returning from another model bucket, and stabilized first reports claiming both windows are completely unused for 15 seconds with one-second retries. Impact: routine polling remains visually stable while transient provider initialization values stay behind the loader instead of appearing as false 100% availability.
+
 ## 0.8.1: Stale Context Hotfix
 
 - Fixed stale extension context crashes from delayed statusline timers after Pi session replacement or reload. Impact: timers now ignore stale `ctx` failures instead of letting issue #1 crash Pi after idle/session lifecycle changes.

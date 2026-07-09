@@ -4,10 +4,12 @@ import test from "node:test";
 import {
   canReuseCachedReport,
   formatCodexUsageBar,
+  formatCodexUsageLoadingBar,
   formatCodexUsageStatusValue,
   formatCodexUsageStatusline,
   formatResetCountdown,
   formatWeeklyResetCountdown,
+  isFullyAvailableReport,
   isStaleExtensionContextError,
   isUsageUnavailable,
   nextResetCountdownDelayForRemainingMs,
@@ -184,6 +186,17 @@ test("formats the dual quota bar with 20 steps per window", () => {
   );
 });
 
+test("formats counter-moving loading markers for both quota windows", () => {
+  assert.equal(formatCodexUsageLoadingBar(0), "▘⠀⠀⠀⠀⠀⠀⠀⠀▗");
+  assert.equal(formatCodexUsageLoadingBar(1), "▝⠀⠀⠀⠀⠀⠀⠀⠀▖");
+  assert.equal(formatCodexUsageLoadingBar(9), "⠀⠀⠀⠀▝▖⠀⠀⠀⠀");
+  assert.equal(formatCodexUsageLoadingBar(19), "▖⠀⠀⠀⠀⠀⠀⠀⠀▝");
+  assert.equal(formatCodexUsageLoadingBar(20), "▗⠀⠀⠀⠀⠀⠀⠀⠀▘");
+  assert.equal(formatCodexUsageLoadingBar(37), "▝⠀⠀⠀⠀⠀⠀⠀⠀▖");
+  assert.equal(formatCodexUsageLoadingBar(38), "▘⠀⠀⠀⠀⠀⠀⠀⠀▗");
+  assert.equal(formatCodexUsageLoadingBar(Number.NaN), "▘⠀⠀⠀⠀⠀⠀⠀⠀▗");
+});
+
 test("keeps positive remaining quota visible at the empty edge", () => {
   assert.equal(
     formatCodexUsageBar({
@@ -284,22 +297,10 @@ test("formats weekly reset countdown by remaining duration bucket", () => {
     formatResetCountdown(now + 19 * hourMs + 54 * minuteMs, now),
     "19.9h",
   );
-  assert.equal(
-    formatResetCountdown(now + hourMs + 24 * minuteMs, now),
-    "1.4h",
-  );
-  assert.equal(
-    formatResetCountdown(now + hourMs + 18 * minuteMs, now),
-    "1.3h",
-  );
-  assert.equal(
-    formatResetCountdown(now + hourMs + 12 * minuteMs, now),
-    "1.2h",
-  );
-  assert.equal(
-    formatResetCountdown(now + hourMs + 6 * minuteMs, now),
-    "1.1h",
-  );
+  assert.equal(formatResetCountdown(now + hourMs + 24 * minuteMs, now), "1.4h");
+  assert.equal(formatResetCountdown(now + hourMs + 18 * minuteMs, now), "1.3h");
+  assert.equal(formatResetCountdown(now + hourMs + 12 * minuteMs, now), "1.2h");
+  assert.equal(formatResetCountdown(now + hourMs + 6 * minuteMs, now), "1.1h");
   assert.equal(formatResetCountdown(now + hourMs, now), "1h");
   assert.equal(
     formatResetCountdown(now + 59 * minuteMs + 59 * secondMs, now),
@@ -324,10 +325,7 @@ test("schedules countdown redraws at the next display boundary", () => {
     nextResetCountdownDelayForRemainingMs(23 * hourMs + 15 * minuteMs),
     3 * minuteMs,
   );
-  assert.equal(
-    nextResetCountdownDelayForRemainingMs(20 * hourMs),
-    hourTenthMs,
-  );
+  assert.equal(nextResetCountdownDelayForRemainingMs(20 * hourMs), hourTenthMs);
   assert.equal(nextResetCountdownDelayForRemainingMs(hourMs), 1);
   assert.equal(
     nextResetCountdownDelayForRemainingMs(59 * minuteMs + 30 * secondMs),
@@ -565,6 +563,39 @@ test("formats weekly reset countdown from the secondary codex window", () => {
   );
 });
 
+test("detects only complete zero-usage reports as fully available", () => {
+  assert.equal(
+    isFullyAvailableReport({
+      snapshots: [
+        {
+          limitId: "codex",
+          primary: { usedPercent: 0 },
+          secondary: { usedPercent: 0 },
+        },
+      ],
+    }),
+    true,
+  );
+  assert.equal(
+    isFullyAvailableReport({
+      snapshots: [
+        {
+          limitId: "codex",
+          primary: { usedPercent: 0 },
+          secondary: { usedPercent: 1 },
+        },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    isFullyAvailableReport({
+      snapshots: [{ limitId: "codex", primary: { usedPercent: 0 } }],
+    }),
+    false,
+  );
+});
+
 test("reuses cached reports only when they contain the active bucket", () => {
   const codexReport = {
     snapshots: [
@@ -593,11 +624,16 @@ test("reuses cached reports only when they contain the active bucket", () => {
 test("detects stale extension context errors", () => {
   assert.equal(
     isStaleExtensionContextError(
-      new Error("This extension ctx is stale after session replacement or reload."),
+      new Error(
+        "This extension ctx is stale after session replacement or reload.",
+      ),
     ),
     true,
   );
-  assert.equal(isStaleExtensionContextError(new Error("network failed")), false);
+  assert.equal(
+    isStaleExtensionContextError(new Error("network failed")),
+    false,
+  );
   assert.equal(isStaleExtensionContextError("ctx is stale"), false);
 });
 
