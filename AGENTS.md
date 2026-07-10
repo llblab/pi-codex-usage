@@ -12,6 +12,6 @@
   - Trigger: Changing statusline formatting.
   - Action: Keep a fixed-width `xxxxxxxxxx` bar where top sextants represent the 5-hour window and bottom sextants represent the weekly window, with 20 steps per window.
 
-- `Weekly reset countdown`: Append the weekly reset countdown only when the secondary window exposes a reset time.
+- `Reset countdowns`: Append the weekly reset countdown when the secondary window exposes a reset time; show the primary countdown when exhausted or when the explicit always-show opt-in is enabled.
   - Trigger: Changing reset-time normalization or statusline refresh cadence.
-  - Action: Keep `d` labels rounded upward in 144-minute day-tenth steps above 24h, show 24h..1h labels in upward-rounded 6-minute hour-tenth steps, keep `m`/`s` labels floored, and hold `0s` until a successful quota refresh reports the next window.
+  - Action: Preserve the default exhausted-primary behavior and the `PI_CODEX_USAGE_ALWAYS_SHOW_RESETS=1` opt-in. Keep `d` labels rounded upward in 144-minute day-tenth steps above 24h, show 24h..1h labels in upward-rounded 6-minute hour-tenth steps, keep `m`/`s` labels floored, and hold `0s` until a successful quota refresh reports the next window.

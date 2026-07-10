@@ -518,6 +518,32 @@ test("formats exhausted primary windows with the full dual bar", () => {
   );
 });
 
+test("optionally shows active primary reset countdowns", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  const report = {
+    snapshots: [
+      {
+        limitId: "codex",
+        primary: { usedPercent: 50, resetAt: now + 5 * hourMs },
+        secondary: { usedPercent: 50, resetAt: now + 7 * dayMs },
+      },
+    ],
+  };
+  const previous = process.env.PI_CODEX_USAGE_ALWAYS_SHOW_RESETS;
+
+  try {
+    delete process.env.PI_CODEX_USAGE_ALWAYS_SHOW_RESETS;
+    assert.equal(formatCodexUsageStatusValue(report, now)?.endsWith(" 7d"), true);
+
+    process.env.PI_CODEX_USAGE_ALWAYS_SHOW_RESETS = "1";
+    assert.equal(formatCodexUsageStatusValue(report, now)?.endsWith(" 5h/7d"), true);
+    assert.equal(nextResetCountdownDelayMs(report, now), 6 * minuteMs);
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODEX_USAGE_ALWAYS_SHOW_RESETS;
+    else process.env.PI_CODEX_USAGE_ALWAYS_SHOW_RESETS = previous;
+  }
+});
+
 test("schedules exhausted primary countdown redraws by the nearest reset label", () => {
   const now = Date.parse("2026-05-28T00:00:00.000Z");
   assert.equal(

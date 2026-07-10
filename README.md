@@ -16,7 +16,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 
 - Shows two counter-moving half-height markers in the statusline bar while the active Codex/Spark quota bucket is loading, then refreshes every 30 seconds
 - Keeps the last usable active-bucket bar visible during ordinary refreshes instead of replacing known quota with a loading state
-- Statusline output stays compact, with the active usage label accented and the quota bar plus weekly reset countdown drawn on a themed background
+- Statusline output stays compact, with the active usage label accented and the quota bar plus reset countdowns drawn on a themed background
 - Regular Codex subscription models show the primary `codex` quota bucket
 - `GPT-5.3-Codex-Spark` shows the parallel Spark quota bucket with the `spark` label
 - When `pi-telegram` is available, the same compact value appears as `codex: <value>` or `spark: <value>` in the `/start` menu status text for active OpenAI Codex subscription models
@@ -69,6 +69,14 @@ codex ▄▄▄▄▄⠀⠀⠀⠀⠀ 5h/7d
 ```
 
 The ten-character dual bar stays unchanged. The first countdown is the 5-hour reset, and the second countdown after `/` is the weekly reset.
+
+To show both countdowns whenever both reset timestamps are available, even before the 5-hour window is exhausted, set:
+
+```bash
+export PI_CODEX_USAGE_ALWAYS_SHOW_RESETS=1
+```
+
+The default remains unchanged when the variable is unset or has any value other than `1`.
 
 Unavailable because Codex auth or subscription quota is not available:
 

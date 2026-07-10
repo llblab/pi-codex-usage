@@ -1099,7 +1099,10 @@ export function formatCodexUsageStatusValue(
   const snapshot = selectActiveUsageSnapshot(report, model);
   if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
   const bar = formatDualLimitBar(snapshot.primary, snapshot.secondary);
-  if (isQuotaWindowExhausted(snapshot.primary) && snapshot.primary?.resetAt) {
+  if (
+    (alwaysShowResetCountdowns() || isQuotaWindowExhausted(snapshot.primary)) &&
+    snapshot.primary?.resetAt
+  ) {
     const primaryCountdown = formatResetCountdown(
       snapshot.primary.resetAt,
       capturedNow,
@@ -1152,7 +1155,7 @@ export function nextResetCountdownDelayMs(
 ): number | undefined {
   const snapshot = selectActiveUsageSnapshot(report, model);
   const resetTimes = [snapshot?.secondary?.resetAt];
-  if (isQuotaWindowExhausted(snapshot?.primary)) {
+  if (alwaysShowResetCountdowns() || isQuotaWindowExhausted(snapshot?.primary)) {
     resetTimes.push(snapshot?.primary?.resetAt);
   }
   const delays = resetTimes
@@ -1185,6 +1188,10 @@ export function nextResetCountdownDelayForRemainingMs(
     1,
     remainingMs - Math.floor(remainingMs / SECOND_MS) * SECOND_MS + 1,
   );
+}
+
+function alwaysShowResetCountdowns(): boolean {
+  return process.env.PI_CODEX_USAGE_ALWAYS_SHOW_RESETS === "1";
 }
 
 function formatTenths(value: number): string {
