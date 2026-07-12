@@ -186,26 +186,36 @@ test("formats the dual quota bar with 20 steps per window", () => {
   );
 });
 
-test("adapts a single weekly window into one 40-step quota bar", () => {
+test("formats a single weekly window as remaining percentage and reset", () => {
   const now = Date.parse("2026-05-28T00:00:00.000Z");
   const report = {
     snapshots: [
       {
         limitId: "codex",
-        primary: { usedPercent: 25, resetAt: now + 7 * dayMs },
+        primary: { usedPercent: 33, resetAt: now + 7 * dayMs },
       },
     ],
   };
 
-  assert.equal(formatCodexUsageBar(report), "███████▌⠀⠀");
-  assert.equal(formatCodexUsageStatusValue(report, now), "███████▌⠀⠀ 7d");
+  assert.equal(formatCodexUsageStatusValue(report, now), "67% 7d");
+  assert.equal(
+    formatCodexUsageStatusline(
+      {
+        snapshots: [
+          { limitId: "codex", primary: { usedPercent: 33 } },
+        ],
+      },
+      testCtx,
+    ),
+    "<fg:accent>codex</fg> <fg:dim>67%</fg>",
+  );
   assert.equal(formatWeeklyResetCountdown(report, now), "7d");
   assert.equal(nextResetCountdownDelayMs(report, now), dayMs / 10);
 });
 
-test("adapts a secondary-only weekly window into one 40-step quota bar", () => {
+test("formats a secondary-only weekly window as remaining percentage", () => {
   assert.equal(
-    formatCodexUsageBar({
+    formatCodexUsageStatusValue({
       snapshots: [
         {
           limitId: "codex",
@@ -213,7 +223,7 @@ test("adapts a secondary-only weekly window into one 40-step quota bar", () => {
         },
       ],
     }),
-    "█████⠀⠀⠀⠀⠀",
+    "50%",
   );
 });
 

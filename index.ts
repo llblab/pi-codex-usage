@@ -1071,6 +1071,9 @@ export function formatCodexUsageStatusline(
 ): string {
   const value = formatCodexUsageStatusValue(report, model);
   if (!value) return formatStatuslineText(ctx, "n/a", model);
+  const snapshot = selectActiveUsageSnapshot(report, model);
+  if (!snapshot?.primary || !snapshot.secondary)
+    return formatStatuslineText(ctx, value, model);
   const [bar, countdown] = value.split(" ", 2);
   const barText = formatStatuslineBarText(
     ctx,
@@ -1098,7 +1101,16 @@ export function formatCodexUsageStatusValue(
   const capturedNow = typeof modelOrNow === "number" ? modelOrNow : now;
   const snapshot = selectActiveUsageSnapshot(report, model);
   if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
-  const bar = formatAdaptiveLimitBar(snapshot.primary, snapshot.secondary);
+  if (!snapshot.primary || !snapshot.secondary) {
+    const window = snapshot.primary ?? snapshot.secondary;
+    if (!window) return undefined;
+    const percentage = `${Math.round(remainingPercent(window))}%`;
+    const countdown = window.resetAt
+      ? formatResetCountdown(window.resetAt, capturedNow)
+      : undefined;
+    return countdown ? `${percentage} ${countdown}` : percentage;
+  }
+  const bar = formatDualLimitBar(snapshot.primary, snapshot.secondary);
   if (isQuotaWindowExhausted(snapshot.primary) && snapshot.primary?.resetAt) {
     const primaryCountdown = formatResetCountdown(
       snapshot.primary.resetAt,

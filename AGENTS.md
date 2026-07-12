@@ -8,9 +8,9 @@
   - Trigger: Updating quota polling or error handling.
   - Action: Do not collapse the bar while a request is in flight; only show `n/a` or `error` after repeated failures or no usable quota.
 
-- `Adaptive compact bar`: Encode the server-provided quota windows in the ten-character separated-sextant bar.
+- `Adaptive compact status`: Match the status representation to the server-provided quota windows.
   - Trigger: Changing statusline formatting.
-  - Action: When both windows exist, keep the classic dual bar with 20 top steps for the 5-hour window and 20 bottom steps for the weekly window. When only one weekly window exists, combine both tiers into one 40-step bar.
+  - Action: When both windows exist, keep the classic dual bar with 20 top steps for the 5-hour window and 20 bottom steps for the weekly window. When only one weekly window exists, show its rounded remaining percentage directly instead of using a bar.
 
 - `Weekly reset countdown`: Append the weekly reset countdown whenever the available weekly window exposes a reset time.
   - Trigger: Changing reset-time normalization or statusline refresh cadence.

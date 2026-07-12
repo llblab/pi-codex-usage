@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.9.1: Clear Weekly Quota Status
+
+- Replaced the unified single-window bar with an explicit remaining-quota percentage. Impact: weekly-only OpenAI responses now render as compact text such as `codex 67% 7d`, making both the remaining quota and reset time immediately readable without decoding a bar.
+- Preserved the classic dual-tier bar for responses that still expose both 5-hour and weekly windows. Impact: older or account-specific server response shapes retain the dense two-limit display while the status adapts directly to available information.
+
 ## 0.9.0: Adaptive Weekly Quota Bar
 
 - Added server-driven quota-window display selection. Impact: responses containing both 5-hour and weekly windows keep the classic dual-tier bar, while responses containing only the new weekly window use all 40 bar steps as one unified quota scale instead of leaving one tier empty.

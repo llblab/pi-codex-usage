@@ -16,7 +16,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 
 - Shows two counter-moving half-height markers in the statusline bar while the active Codex/Spark quota bucket is loading, then refreshes every 30 seconds
 - Keeps the last usable active-bucket bar visible during ordinary refreshes instead of replacing known quota with a loading state
-- Statusline output stays compact, with the active usage label accented and the quota bar plus weekly reset countdown drawn on a themed background
+- Statusline output adapts to the response: weekly-only limits show an explicit remaining percentage and reset countdown, while dual-window limits keep the compact themed bar
 - Regular Codex subscription models show the primary `codex` quota bucket
 - `GPT-5.3-Codex-Spark` shows the parallel Spark quota bucket with the `spark` label
 - When `pi-telegram` is available, the same compact value appears as `codex: <value>` or `spark: <value>` in the `/start` menu status text for active OpenAI Codex subscription models
@@ -56,11 +56,17 @@ Spark model usage:
 spark ██████████ 7d
 ```
 
-The ten-character bar adapts to the quota windows returned by OpenAI. When both windows exist, it encodes two twenty-step limits at once: the top quadrants show the 5-hour limit and the bottom quadrants show the weekly limit, with each step representing 5%. When OpenAI returns only the weekly window, both tiers combine into one conventional 40-step bar, with each step representing 2.5%. If any available quota window is exhausted, the bar keeps its shape but switches to the error background color.
+When OpenAI returns only the weekly window, the status shows the exact rounded remaining percentage and reset countdown directly:
+
+```text
+codex 67% 7d
+```
+
+When both windows exist, the ten-character bar encodes two twenty-step limits at once: the top quadrants show the 5-hour limit and the bottom quadrants show the weekly limit, with each step representing 5%. If either quota window is exhausted, the bar keeps its shape but switches to the error background color.
 
 Before the first usable report for the active quota bucket arrives, two half-height markers move through the same fixed-width themed bar. The upper 5-hour marker travels opposite the lower weekly marker; both reverse smoothly at the ends, and each loader run randomly starts from one of the two mirrored endpoint phases. Their motion distinguishes loading from 100% remaining quota while preserving the normal bar background. A first report claiming both windows are completely unused is treated as provisional for 15 seconds and retried every second, because providers can briefly emit zeroed windows while initializing. Once a usable report exists, refresh requests preserve that last good bar.
 
-When the weekly reset time is available, including in a single-window response, the bar is followed by a countdown. More than a day remains is shown in 144-minute day-tenth steps such as `7d`, `6.9d`, `6.6d`, `5.1d`, `5d`, `3.7d`, `3d`, `2d`, `1.9d`, `1.5d`, and `1.1d`, rounded upward to the next tenth. At 24 hours and below it switches to upward-rounded 6-minute hour-tenth steps such as `24h`, `23.7h`, `20.1h`, `20h`, `19.9h`, `1.4h`, `1.3h`, `1.2h`, `1.1h`, and `1h`. Under an hour it switches to floored minutes, and under a minute to seconds. After the reset timestamp passes, `0s` is held until the next successful quota refresh reports the new weekly window.
+When the weekly reset time is available, it follows either the single-window percentage or the dual-window bar. More than a day remains is shown in 144-minute day-tenth steps such as `7d`, `6.9d`, `6.6d`, `5.1d`, `5d`, `3.7d`, `3d`, `2d`, `1.9d`, `1.5d`, and `1.1d`, rounded upward to the next tenth. At 24 hours and below it switches to upward-rounded 6-minute hour-tenth steps such as `24h`, `23.7h`, `20.1h`, `20h`, `19.9h`, `1.4h`, `1.3h`, `1.2h`, `1.1h`, and `1h`. Under an hour it switches to floored minutes, and under a minute to seconds. After the reset timestamp passes, `0s` is held until the next successful quota refresh reports the new weekly window.
 
 When the 5-hour window is exhausted and exposes its own reset time, the statusline adds the 5-hour reset before the weekly reset:
 
