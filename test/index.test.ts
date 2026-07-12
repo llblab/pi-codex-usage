@@ -186,6 +186,37 @@ test("formats the dual quota bar with 20 steps per window", () => {
   );
 });
 
+test("adapts a single weekly window into one 40-step quota bar", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  const report = {
+    snapshots: [
+      {
+        limitId: "codex",
+        primary: { usedPercent: 25, resetAt: now + 7 * dayMs },
+      },
+    ],
+  };
+
+  assert.equal(formatCodexUsageBar(report), "███████▌⠀⠀");
+  assert.equal(formatCodexUsageStatusValue(report, now), "███████▌⠀⠀ 7d");
+  assert.equal(formatWeeklyResetCountdown(report, now), "7d");
+  assert.equal(nextResetCountdownDelayMs(report, now), dayMs / 10);
+});
+
+test("adapts a secondary-only weekly window into one 40-step quota bar", () => {
+  assert.equal(
+    formatCodexUsageBar({
+      snapshots: [
+        {
+          limitId: "codex",
+          secondary: { usedPercent: 50 },
+        },
+      ],
+    }),
+    "█████⠀⠀⠀⠀⠀",
+  );
+});
+
 test("formats counter-moving loading markers for both quota windows", () => {
   assert.equal(formatCodexUsageLoadingBar(0), "▘⠀⠀⠀⠀⠀⠀⠀⠀▗");
   assert.equal(formatCodexUsageLoadingBar(1), "▝⠀⠀⠀⠀⠀⠀⠀⠀▖");
@@ -563,7 +594,7 @@ test("formats weekly reset countdown from the secondary codex window", () => {
   );
 });
 
-test("detects only complete zero-usage reports as fully available", () => {
+test("detects zero usage across every available window as fully available", () => {
   assert.equal(
     isFullyAvailableReport({
       snapshots: [
@@ -592,7 +623,7 @@ test("detects only complete zero-usage reports as fully available", () => {
     isFullyAvailableReport({
       snapshots: [{ limitId: "codex", primary: { usedPercent: 0 } }],
     }),
-    false,
+    true,
   );
 });
 

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.0: Adaptive Weekly Quota Bar
+
+- Added server-driven quota-window display selection. Impact: responses containing both 5-hour and weekly windows keep the classic dual-tier bar, while responses containing only the new weekly window use all 40 bar steps as one unified quota scale instead of leaving one tier empty.
+- Added single-window reset countdown and redraw scheduling. Impact: the weekly reset time remains visible and updates at the correct countdown boundaries regardless of whether OpenAI returns the weekly limit as the primary or secondary window.
+- Extended provisional full-quota stabilization to single-window responses. Impact: transient 0%-used weekly reports remain behind the loading indicator until confirmed, matching the existing dual-window safety behavior.
+
 ## 0.8.2: Quota Loading Hotfix
 
 - Replaced the static empty request placeholder with fixed-width upper and lower markers that move in opposite directions through their respective quota bars, reverse at the ends, and randomly start from either mirrored endpoint phase, using the normal themed bar background. Impact: motion distinguishes startup and model-bucket loading from 100% available quota while preserving the dual-window visual language.

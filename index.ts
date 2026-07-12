@@ -1098,7 +1098,7 @@ export function formatCodexUsageStatusValue(
   const capturedNow = typeof modelOrNow === "number" ? modelOrNow : now;
   const snapshot = selectActiveUsageSnapshot(report, model);
   if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
-  const bar = formatDualLimitBar(snapshot.primary, snapshot.secondary);
+  const bar = formatAdaptiveLimitBar(snapshot.primary, snapshot.secondary);
   if (isQuotaWindowExhausted(snapshot.primary) && snapshot.primary?.resetAt) {
     const primaryCountdown = formatResetCountdown(
       snapshot.primary.resetAt,
@@ -1122,7 +1122,8 @@ export function formatWeeklyResetCountdown(
 ): string | undefined {
   const model = typeof modelOrNow === "number" ? undefined : modelOrNow;
   const capturedNow = typeof modelOrNow === "number" ? modelOrNow : now;
-  const resetAt = selectActiveUsageSnapshot(report, model)?.secondary?.resetAt;
+  const snapshot = selectActiveUsageSnapshot(report, model);
+  const resetAt = weeklyWindow(snapshot)?.resetAt;
   if (resetAt === undefined) return undefined;
   return formatResetCountdown(resetAt, capturedNow);
 }
@@ -1151,9 +1152,9 @@ export function nextResetCountdownDelayMs(
   model?: CodexUsageModel,
 ): number | undefined {
   const snapshot = selectActiveUsageSnapshot(report, model);
-  const resetTimes = [snapshot?.secondary?.resetAt];
-  if (isQuotaWindowExhausted(snapshot?.primary)) {
-    resetTimes.push(snapshot?.primary?.resetAt);
+  const resetTimes = [weeklyWindow(snapshot)?.resetAt];
+  if (snapshot?.secondary && isQuotaWindowExhausted(snapshot.primary)) {
+    resetTimes.push(snapshot.primary?.resetAt);
   }
   const delays = resetTimes
     .filter((resetAt): resetAt is number => resetAt !== undefined)
@@ -1197,7 +1198,7 @@ function formatReportBar(
 ): string | undefined {
   const snapshot = selectActiveUsageSnapshot(report, model);
   if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
-  return formatDualLimitBar(snapshot.primary, snapshot.secondary);
+  return formatAdaptiveLimitBar(snapshot.primary, snapshot.secondary);
 }
 
 function formatStatuslineText(
@@ -1291,9 +1292,32 @@ function normalizedUsageKey(value: string | undefined): string | undefined {
   return key || undefined;
 }
 
-function formatDualLimitBar(
+function formatAdaptiveLimitBar(
   primary: NormalizedRateLimitWindow | undefined,
   secondary: NormalizedRateLimitWindow | undefined,
+): string {
+  if (!primary || !secondary) return formatSingleLimitBar(primary ?? secondary);
+  return formatDualLimitBar(primary, secondary);
+}
+
+function formatSingleLimitBar(
+  window: NormalizedRateLimitWindow | undefined,
+): string {
+  const filled = filledParts(window, DUAL_BAR_WIDTH * 4);
+  const partMasks = [1, 4, 2, 8];
+  let value = "";
+  for (let index = 0; index < DUAL_BAR_WIDTH; index++) {
+    const cellParts = Math.min(4, Math.max(0, filled - index * 4));
+    let mask = 0;
+    for (let part = 0; part < cellParts; part++) mask |= partMasks[part] ?? 0;
+    value += DUAL_BAR_CHARS[mask];
+  }
+  return value;
+}
+
+function formatDualLimitBar(
+  primary: NormalizedRateLimitWindow,
+  secondary: NormalizedRateLimitWindow,
 ): string {
   const primaryParts = filledTwentieths(primary);
   const secondaryParts = filledTwentieths(secondary);
@@ -1360,12 +1384,19 @@ export function isFullyAvailableReport(
   model?: CodexUsageModel,
 ): boolean {
   const snapshot = selectActiveUsageSnapshot(report, model);
-  return (
-    snapshot?.primary !== undefined &&
-    snapshot.secondary !== undefined &&
-    clampPercent(snapshot.primary.usedPercent) === 0 &&
-    clampPercent(snapshot.secondary.usedPercent) === 0
+  const windows = [snapshot?.primary, snapshot?.secondary].filter(
+    (window): window is NormalizedRateLimitWindow => window !== undefined,
   );
+  return (
+    windows.length > 0 &&
+    windows.every((window) => clampPercent(window.usedPercent) === 0)
+  );
+}
+
+function weeklyWindow(
+  snapshot: NormalizedRateLimitSnapshot | undefined,
+): NormalizedRateLimitWindow | undefined {
+  return snapshot?.secondary ?? snapshot?.primary;
 }
 
 function selectActiveUsageSnapshot(
