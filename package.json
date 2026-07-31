@@ -1,8 +1,8 @@
 {
   "name": "@llblab/pi-codex-usage",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": false,
-  "description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits.",
+  "description": "Minimal Pi extension that shows primary Codex ChatGPT subscription usage limits",
   "keywords": [
     "pi-package",
     "pi-extension",
