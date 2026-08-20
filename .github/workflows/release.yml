@@ -1,0 +1,214 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact tag
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Validate package
+        run: npm run validate
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out exact tag
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Preflight exact tag, package, lockfile, and release notes
+        id: preflight
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+
+          const tagName = process.env.TAG_NAME;
+          if (!tagName || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tagName)) {
+            throw new Error(`Invalid release tag: ${tagName ?? "missing"}.`);
+          }
+          if (process.env.GITHUB_REF !== `refs/tags/${tagName}`) {
+            throw new Error(`Release checkout must use refs/tags/${tagName}.`);
+          }
+
+          const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
+          const headCommit = git("rev-parse", "HEAD^{commit}");
+          const tagCommit = git("rev-parse", `refs/tags/${tagName}^{commit}`);
+          const eventCommit = git("rev-parse", `${process.env.GITHUB_SHA}^{commit}`);
+          if (headCommit !== tagCommit || eventCommit !== tagCommit) {
+            throw new Error(`Release checkout identity mismatch: head=${headCommit} tag=${tagCommit} event=${eventCommit}.`);
+          }
+
+          const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+          const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+          const version = tagName.slice(1);
+          if (!packageJson.name || packageJson.private === true || packageJson.version !== version) {
+            throw new Error(`Tag ${tagName} does not match a publishable package manifest.`);
+          }
+          if (packageLock.version !== version || packageLock.packages?.[""]?.version !== version) {
+            throw new Error(`Tag ${tagName} does not match package-lock.json version metadata.`);
+          }
+
+          let title = `${packageJson.name} ${version}`;
+          let notes = "";
+          if (existsSync("CHANGELOG.md")) {
+            const changelog = readFileSync("CHANGELOG.md", "utf8");
+            const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const pattern = new RegExp(`^##\\s+(${escapedVersion}(?:[^\\n]*)?)\\n([\\s\\S]*?)(?=^##\\s+|(?![\\s\\S]))`, "m");
+            const match = changelog.match(pattern);
+            if (!match) throw new Error(`CHANGELOG.md has no section for ${version}.`);
+            title = match[1].trim();
+            notes = match[2].trim();
+            if (!notes) throw new Error(`CHANGELOG.md section for ${version} is empty.`);
+          }
+
+          writeFileSync("release-title.txt", `${title}\n`);
+          if (notes) writeFileSync("release-notes.md", `${notes}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, [
+            `version=${version}`,
+            `package_name=${packageJson.name}`,
+            `tag_commit=${tagCommit}`,
+            `has_notes=${notes ? "true" : "false"}`,
+          ].join("\n") + "\n");
+          NODE
+      - name: Verify npm supports Trusted Publisher
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          const version = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
+          const [major, minor, patch] = version.split(".").map(Number);
+          if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1)))) {
+            throw new Error(`npm ${version} cannot use Trusted Publisher; require npm >= 11.5.1.`);
+          }
+          console.log(`npm ${version} supports Trusted Publisher.`);
+          NODE
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Capture exact local package inventory
+        run: npm pack --dry-run --json > npm-local-pack.json
+      - name: Resolve npm publication state
+        id: npm-state
+        env:
+          PACKAGE_NAME: ${{ steps.preflight.outputs.package_name }}
+          TAG_COMMIT: ${{ steps.preflight.outputs.tag_commit }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          set +e
+          npm view "$PACKAGE_NAME@$VERSION" --json version gitHead > npm-existing.json 2> npm-existing.err
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const raw = JSON.parse(readFileSync("npm-existing.json", "utf8"));
+          const published = Array.isArray(raw) ? raw[0] : raw;
+          if (published?.version !== process.env.VERSION || published?.gitHead !== process.env.TAG_COMMIT) {
+            throw new Error(`npm version already exists with contradictory identity: ${JSON.stringify(published)}.`);
+          }
+          NODE
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif grep -Eq 'E404|404 Not Found' npm-existing.err; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            cat npm-existing.err >&2
+            exit "$status"
+          fi
+      - name: Publish npm package through Trusted Publisher
+        if: steps.npm-state.outputs.publish == 'true'
+        run: npm publish --access public --provenance
+      - name: Verify public npm package and packed manifest
+        env:
+          PACKAGE_NAME: ${{ steps.preflight.outputs.package_name }}
+          TAG_COMMIT: ${{ steps.preflight.outputs.tag_commit }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          verified=false
+          for attempt in $(seq 1 20); do
+            if npm view "$PACKAGE_NAME@$VERSION" --json version gitHead > npm-published.json 2> npm-published.err &&
+               npm pack "$PACKAGE_NAME@$VERSION" --dry-run --json > npm-pack.json 2> npm-pack.err &&
+               node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const unpackView = (raw) => Array.isArray(raw) ? raw[0] : raw;
+          const unpackPack = (raw) =>
+            Array.isArray(raw) ? raw[0] : raw[process.env.PACKAGE_NAME] ?? Object.values(raw)[0];
+          const published = unpackView(JSON.parse(readFileSync("npm-published.json", "utf8")));
+          const localPacked = unpackPack(JSON.parse(readFileSync("npm-local-pack.json", "utf8")));
+          const packed = unpackPack(JSON.parse(readFileSync("npm-pack.json", "utf8")));
+          const localPaths = (localPacked?.files ?? []).map((file) => file.path).sort();
+          const paths = (packed?.files ?? []).map((file) => file.path).sort();
+          if (published.version !== process.env.VERSION || published.gitHead !== process.env.TAG_COMMIT ||
+              packed?.name !== process.env.PACKAGE_NAME || packed?.version !== process.env.VERSION ||
+              JSON.stringify(paths) !== JSON.stringify(localPaths) || !paths.includes("package.json")) {
+            throw new Error("Published npm identity or packed manifest does not match the release tag.");
+          }
+          NODE
+            then
+              verified=true
+              break
+            fi
+            sleep 3
+          done
+          if [ "$verified" != "true" ]; then
+            cat npm-published.err npm-pack.err >&2 2>/dev/null || true
+            exit 1
+          fi
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          HAS_NOTES: ${{ steps.preflight.outputs.has_notes }}
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          if gh release view "$TAG_NAME" --json tagName,isDraft,isPrerelease,publishedAt > release-existing.json 2>/dev/null; then
+            node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const release = JSON.parse(readFileSync("release-existing.json", "utf8"));
+          const expectedPrerelease = process.env.VERSION.includes("-");
+          if (release.tagName !== process.env.TAG_NAME || release.isDraft ||
+              release.isPrerelease !== expectedPrerelease || !release.publishedAt) {
+            throw new Error(`Existing GitHub Release has contradictory state: ${JSON.stringify(release)}.`);
+          }
+          NODE
+          elif [[ "$VERSION" == *-* ]]; then
+            if [ "$HAS_NOTES" = "true" ]; then
+              gh release create "$TAG_NAME" --verify-tag --prerelease --latest=false --title "$(cat release-title.txt)" --notes-file release-notes.md
+            else
+              gh release create "$TAG_NAME" --verify-tag --prerelease --latest=false --title "$(cat release-title.txt)" --generate-notes
+            fi
+          elif [ "$HAS_NOTES" = "true" ]; then
+            gh release create "$TAG_NAME" --verify-tag --latest --title "$(cat release-title.txt)" --notes-file release-notes.md
+          else
+            gh release create "$TAG_NAME" --verify-tag --latest --title "$(cat release-title.txt)" --generate-notes
+          fi

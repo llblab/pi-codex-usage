@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.9.3: Trusted Release Automation
+
+- Added tag-gated release automation with exact package/lock/tag identity checks, full package validation, npm Trusted Publisher provenance, public registry verification, and workflow-owned GitHub Release creation through `.github/workflows/release.yml`.
+- Normalized nullable provider headers into the string-only request header contract, preserving compatibility with current Pi model-registry types while omitting intentionally removed headers.
 
 ## 0.9.1: Clear Weekly Quota Status
 
