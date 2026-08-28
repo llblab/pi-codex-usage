@@ -14,7 +14,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 
 ## Features
 
-- Shows two counter-moving half-height markers in the statusline bar while the active Codex/Spark quota bucket is loading, then refreshes every 30 seconds
+- Shows two counter-moving half-height markers in the statusline bar while the active Codex/Spark quota bucket is loading, then refreshes every 60 seconds
 - Keeps the last usable active-bucket bar visible during ordinary refreshes instead of replacing known quota with a loading state
 - Statusline output adapts to the response: weekly-only limits show an explicit remaining percentage and reset countdown, while dual-window limits keep the compact themed bar
 - Regular Codex subscription models show the primary `codex` quota bucket

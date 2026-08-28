@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4: Responsive Quota Polling
+
+- Increased the automatic Codex quota refresh interval from 30 to 60 seconds. Impact: status values remain responsive down to the locally rendered seconds countdown while reducing repeated OpenAI requests, especially when several Pi instances are open.
+
 ## 0.9.3: Trusted Release Automation
 
 - Added tag-gated release automation with exact package/lock/tag identity checks, full package validation, npm Trusted Publisher provenance, public registry verification, and workflow-owned GitHub Release creation through `.github/workflows/release.yml`.
