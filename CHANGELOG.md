@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0: Business Credit Usage
+
+- Added Business-account credit usage support for responses that do not expose Codex rate-limit windows. Impact: the statusline now shows rounded remaining credit percentage and an optional reset countdown while preserving existing rate-limit displays when both forms are available.
+- Scheduled credit reset countdown redraws at their exact display boundaries and retained credits-only reports in the active cache. Impact: credit status remains locally responsive between API refreshes without displacing model-specific quota windows.
+
 ## 0.9.4: Responsive Quota Polling
 
 - Increased the automatic Codex quota refresh interval from 30 to 60 seconds. Impact: status values remain responsive down to the locally rendered seconds countdown while reducing repeated OpenAI requests, especially when several Pi instances are open.
