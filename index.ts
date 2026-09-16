@@ -90,6 +90,12 @@ export type UsageQueryError = {
 
 export type CodexUsageReport = {
   snapshots: NormalizedRateLimitSnapshot[];
+  credits?: NormalizedCreditUsage;
+};
+
+export type NormalizedCreditUsage = {
+  remainingPercent: number;
+  resetAt?: number;
 };
 
 export type NormalizedRateLimitSnapshot = {
@@ -106,6 +112,8 @@ export type NormalizedRateLimitWindow = {
 type RateLimitStatusPayload = {
   rate_limit?: unknown;
   additional_rate_limits?: unknown;
+  credits?: unknown;
+  spend_control?: unknown;
 };
 
 type BackendAdditionalRateLimit = {
@@ -593,7 +601,10 @@ async function queryUsage(
         source === "pi-auth"
           ? await queryViaPiAuth(ctx, options.timeoutMs)
           : await queryViaCodexAppServer(options.timeoutMs);
-      if (selectUsageSnapshot(report, activeUsageLimitId(model))) {
+      if (
+        selectUsageSnapshot(report, activeUsageLimitId(model)) ||
+        report.credits
+      ) {
         return { ok: true, report };
       }
       errors.push({
@@ -920,12 +931,56 @@ export function normalizeBackendPayload(
     }
   }
 
-  if (snapshots.length === 0) {
+  const credits = normalizeBackendCredits(payload, _capturedAt);
+  if (snapshots.length === 0 && !credits) {
     throw new Error(
-      "Codex usage endpoint returned no displayable rate-limit windows.",
+      "Codex usage endpoint returned no displayable rate-limit windows or credits.",
     );
   }
-  return { snapshots };
+  return credits ? { snapshots, credits } : { snapshots };
+}
+
+function normalizeBackendCredits(
+  payload: RateLimitStatusPayload,
+  capturedAt: number,
+): NormalizedCreditUsage | undefined {
+  const spendControl = payload.spend_control as
+    | Record<string, unknown>
+    | undefined;
+  const individualLimit = spendControl?.individual_limit as
+    | Record<string, unknown>
+    | undefined;
+  const credits = payload.credits as Record<string, unknown> | undefined;
+  const limit = asNumber(individualLimit?.limit);
+  const used = asNumber(individualLimit?.used);
+  const remaining = asNumber(individualLimit?.remaining);
+  const resetAt = asResetTime(
+    [
+      individualLimit?.reset_at,
+      individualLimit?.resets_at,
+      individualLimit?.reset_time,
+      spendControl?.reset_at,
+      spendControl?.resets_at,
+      credits?.reset_at,
+      credits?.resets_at,
+    ],
+    individualLimit?.reset_after_seconds ?? spendControl?.reset_after_seconds,
+    capturedAt,
+  );
+  if (
+    limit === undefined ||
+    used === undefined ||
+    remaining === undefined ||
+    limit <= 0
+  )
+    return undefined;
+  const remainingPercent = Math.min(
+    100,
+    Math.max(0, (remaining / limit) * 100),
+  );
+  return resetAt === undefined
+    ? { remainingPercent }
+    : { remainingPercent, resetAt };
 }
 
 function backendAdditionalLimitId(limit: BackendAdditionalRateLimit): string {
@@ -1103,7 +1158,9 @@ export function formatCodexUsageStatusValue(
   const model = typeof modelOrNow === "number" ? undefined : modelOrNow;
   const capturedNow = typeof modelOrNow === "number" ? modelOrNow : now;
   const snapshot = selectActiveUsageSnapshot(report, model);
-  if (!snapshot || (!snapshot.primary && !snapshot.secondary)) return undefined;
+  if (!snapshot || (!snapshot.primary && !snapshot.secondary)) {
+    return formatCreditUsage(report.credits, capturedNow);
+  }
   if (!snapshot.primary || !snapshot.secondary) {
     const window = snapshot.primary ?? snapshot.secondary;
     if (!window) return undefined;
@@ -1128,6 +1185,17 @@ export function formatCodexUsageStatusValue(
   }
   const countdown = formatWeeklyResetCountdown(report, model, capturedNow);
   return countdown ? `${bar} ${countdown}` : bar;
+}
+
+function formatCreditUsage(
+  credits: NormalizedCreditUsage | undefined,
+  now: number,
+): string | undefined {
+  if (!credits) return undefined;
+  const percentage = `${Math.round(credits.remainingPercent)}%`;
+  return credits.resetAt
+    ? `${percentage} ${formatResetCountdown(credits.resetAt, now)}`
+    : percentage;
 }
 
 export function formatWeeklyResetCountdown(
@@ -1391,7 +1459,10 @@ export function canReuseCachedReport(
   report: CodexUsageReport,
   model: CodexUsageModel | undefined,
 ): boolean {
-  return selectActiveUsageSnapshot(report, model) !== undefined;
+  return (
+    selectActiveUsageSnapshot(report, model) !== undefined ||
+    report.credits !== undefined
+  );
 }
 
 export function isFullyAvailableReport(

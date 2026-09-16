@@ -68,6 +68,12 @@ Before the first usable report for the active quota bucket arrives, two half-hei
 
 When the weekly reset time is available, it follows either the single-window percentage or the dual-window bar. More than a day remains is shown in 144-minute day-tenth steps such as `7d`, `6.9d`, `6.6d`, `5.1d`, `5d`, `3.7d`, `3d`, `2d`, `1.9d`, `1.5d`, and `1.1d`, rounded upward to the next tenth. At 24 hours and below it switches to upward-rounded 6-minute hour-tenth steps such as `24h`, `23.7h`, `20.1h`, `20h`, `19.9h`, `1.4h`, `1.3h`, `1.2h`, `1.1h`, and `1h`. Under an hour it switches to floored minutes, and under a minute to seconds. After the reset timestamp passes, `0s` is held until the next successful quota refresh reports the new weekly window.
 
+Business accounts that return credits instead of Codex rate-limit windows show the rounded remaining percentage. When the response includes a credit reset cycle, its countdown is shown after the percentage:
+
+```text
+codex 81% 2.8d
+```
+
 When the 5-hour window is exhausted and exposes its own reset time, the statusline adds the 5-hour reset before the weekly reset:
 
 ```text
