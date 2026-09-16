@@ -82,6 +82,35 @@ test("normalizes backend primary and secondary windows", () => {
   });
 });
 
+test("normalizes credits-only backend usage", () => {
+  const capturedAt = Date.parse("2026-05-28T00:00:00.000Z");
+  const report = normalizeBackendPayload(
+    {
+      spend_control: {
+        individual_limit: {
+          limit: 100,
+          used: 25,
+          remaining: 75,
+          reset_after_seconds: 3600,
+        },
+      },
+    },
+    capturedAt,
+    "pi-auth",
+  );
+
+  assert.deepEqual(report, {
+    snapshots: [],
+    credits: {
+      remainingPercent: 75,
+      resetAt: capturedAt + hourMs,
+    },
+  });
+  assert.equal(formatCodexUsageStatusValue(report, capturedAt), "75% 1h");
+  assert.equal(nextResetCountdownDelayMs(report, capturedAt), 1);
+  assert.equal(canReuseCachedReport(report, codexModel), true);
+});
+
 test("normalizes backend additional Spark limits", () => {
   const capturedAt = Date.parse("2026-05-28T00:00:00.000Z");
   const report = normalizeBackendPayload(
@@ -211,6 +240,25 @@ test("formats a single weekly window as remaining percentage and reset", () => {
   );
   assert.equal(formatWeeklyResetCountdown(report, now), "7d");
   assert.equal(nextResetCountdownDelayMs(report, now), dayMs / 10);
+});
+
+test("prefers rate-limit countdown scheduling when credits are also present", () => {
+  const now = Date.parse("2026-05-28T00:00:00.000Z");
+  assert.equal(
+    nextResetCountdownDelayMs(
+      {
+        snapshots: [
+          {
+            limitId: "codex",
+            primary: { usedPercent: 33, resetAt: now + 7 * dayMs },
+          },
+        ],
+        credits: { remainingPercent: 75, resetAt: now + hourMs },
+      },
+      now,
+    ),
+    dayMs / 10,
+  );
 });
 
 test("formats a secondary-only weekly window as remaining percentage", () => {

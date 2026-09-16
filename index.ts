@@ -1235,7 +1235,10 @@ export function nextResetCountdownDelayMs(
   model?: CodexUsageModel,
 ): number | undefined {
   const snapshot = selectActiveUsageSnapshot(report, model);
-  const resetTimes = [weeklyWindow(snapshot)?.resetAt];
+  const hasRateLimitWindow = Boolean(snapshot?.primary || snapshot?.secondary);
+  const resetTimes = [
+    hasRateLimitWindow ? weeklyWindow(snapshot)?.resetAt : report.credits?.resetAt,
+  ];
   if (snapshot?.secondary && isQuotaWindowExhausted(snapshot.primary)) {
     resetTimes.push(snapshot.primary?.resetAt);
   }
