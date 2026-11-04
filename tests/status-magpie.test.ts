@@ -7,7 +7,7 @@ import test from "node:test";
 
 const run = promisify(execFile);
 
-test("Magpie lifecycle labels local quota, ticks resets, hides other models and never enables Fast", async () => {
+test("Magpie lifecycle displays Codex quota, ticks resets, hides other models and never enables Fast", async () => {
   const dir = mkdtempSync(join(tmpdir(), "codex-magpie-status-"));
   try {
     await run(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
@@ -51,15 +51,15 @@ test("Magpie lifecycle labels local quota, ticks resets, hides other models and 
       });
       try {
         await emit("session_start");
-        assert.match(status, /^codex \\(local\\) 67% [012]s$/);
+        assert.match(status, /^codex 67% [012]s$/);
         const telegramRow = row(report, model);
-        assert.equal(telegramRow.label, "codex (local)");
+        assert.equal(telegramRow.label, "codex");
         assert.match(telegramRow.value, /^67% [012]s$/);
         const deadline = Date.now() + 4000;
         while (!status.endsWith(" 0s") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
-        assert.equal(status, "codex (local) 67% 0s");
+        assert.equal(status, "codex 67% 0s");
         await emit("session_tree");
-        assert.equal(status, "codex (local) 67% 0s");
+        assert.equal(status, "codex 67% 0s");
         await command("", ctx);
         assert.equal(notices.pop(), "Fast mode is not supported for the current provider");
         assert.equal(readFileSync(configPath, "utf8"), originalConfig);
@@ -76,14 +76,14 @@ test("Magpie lifecycle labels local quota, ticks resets, hides other models and 
         await select(native);
         assert.equal(status, "codex 67% 0s");
         await select({ ...model, id: "codex/gpt-6-astra" });
-        assert.equal(status, "codex (local) 67% 0s");
+        assert.equal(status, "codex 67% 0s");
         assert.equal(row(undefined, model), undefined);
         writeFileSync(configPath, "invalid json");
         await select(model);
-        assert.equal(status, "codex (local) 67% 0s");
+        assert.equal(status, "codex 67% 0s");
         for (const [data, expected] of [
-          [{ error: "No subscription", unavailable: true }, "codex (local) n/a"],
-          [{ error: "Network failure" }, "codex (local) error"],
+          [{ error: "No subscription", unavailable: true }, "codex n/a"],
+          [{ error: "Network failure" }, "codex error"],
         ]) {
           publish(data);
           await select(model);
@@ -93,8 +93,8 @@ test("Magpie lifecycle labels local quota, ticks resets, hides other models and 
         await select(native);
         assert.match(status, /^codex /);
         await select(model);
-        // The existing loading timer must relabel immediately on model selection.
-        assert.match(status, /^codex \\(local\\) /);
+        // Both native and proxy models retain the same label while loading.
+        assert.match(status, /^codex /);
         await select({ ...model, id: "claude/claude-opus" });
         await new Promise(resolve => setTimeout(resolve, 80));
         assert.equal(status, undefined);

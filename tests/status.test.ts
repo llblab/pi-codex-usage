@@ -70,7 +70,7 @@ test("OpenAI, Codex and Magpie Codex models share one root usage.json and use lo
     });
     try {
       instances.forEach(({ handlers, ctx }) => handlers.get("session_start")({}, ctx));
-      const expected = instances.map(({ ctx }) => (ctx.model.provider === "magpie" ? "codex (local)" : "codex") + " ████████▀⠀");
+      const expected = instances.map(() => "codex ████████▀⠀");
       const deadline = Date.now() + 5000;
       while (instances.some((instance, i) => instance.status() !== expected[i]) && Date.now() < deadline)
         await new Promise(resolve => setTimeout(resolve, 20));

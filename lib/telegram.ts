@@ -2,7 +2,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isFastEnabled } from "./fast.ts";
 import { isCodexUsageModel, isOpenAICodexModel, type CodexUsageReport } from "./usage.ts";
-import { codexUsageStatusLabel, formatCodexUsageStatusValue } from "./status-format.ts";
+import { DEFAULT_STATUS_LABEL_TEXT, formatCodexUsageStatusValue } from "./status-format.ts";
 const CODEX_USAGE_EXTENSION_ID = "@llblab/pi-codex-usage";
 const TELEGRAM_STATUS_IMPORT_SPECIFIERS = [
   "@llblab/pi-telegram/status",
@@ -31,7 +31,7 @@ export function codexUsageTelegramStatusLine(
   const value = report ? formatCodexUsageStatusValue(report, activeModel) : undefined;
   const fast = isOpenAICodexModel(activeModel) && isFastEnabled(activeModel);
   if (!value && !fast) return undefined;
-  return { label: codexUsageStatusLabel(activeModel), value: value ? `${value}${fast ? " fast" : ""}` : "fast" };
+  return { label: DEFAULT_STATUS_LABEL_TEXT, value: value ? `${value}${fast ? " fast" : ""}` : "fast" };
 }
 
 async function importTelegramStatusLineModule(): Promise<

@@ -1,19 +1,15 @@
 /** Domain: quota presentation. Owns: terminal formatting and countdowns. Excludes: polling and request transport. */
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { clampPercent, isCodexProxyModel, selectActiveUsageSnapshot, type CodexUsageModel, type CodexUsageReport, type NormalizedCreditUsage, type NormalizedRateLimitSnapshot, type NormalizedRateLimitWindow } from "./usage.ts";
+import { clampPercent, selectActiveUsageSnapshot, type CodexUsageModel, type CodexUsageReport, type NormalizedCreditUsage, type NormalizedRateLimitSnapshot, type NormalizedRateLimitWindow } from "./usage.ts";
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
 const HOUR_MS = 60 * MINUTE_MS;
 const HOUR_TENTH_MS = 6 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const DAY_TENTH_MS = 144 * MINUTE_MS;
-const DEFAULT_STATUS_LABEL_TEXT = "codex";
+export const DEFAULT_STATUS_LABEL_TEXT = "codex";
 const DUAL_BAR_WIDTH = 10;
 
-/** A proxy model must not imply that local subscription quota belongs to its route. */
-export function codexUsageStatusLabel(model?: CodexUsageModel): string {
-  return isCodexProxyModel(model) ? "codex (local)" : DEFAULT_STATUS_LABEL_TEXT;
-}
 const DUAL_BAR_CHARS = [
   "⠀",
   "▘",
@@ -205,9 +201,9 @@ export function formatReportBar(
 function formatStatuslineText(
   ctx: ExtensionContext,
   value: string,
-  model?: CodexUsageModel,
+  _model?: CodexUsageModel,
 ): string {
-  const label = ctx.ui.theme.fg("accent", codexUsageStatusLabel(model));
+  const label = ctx.ui.theme.fg("accent", DEFAULT_STATUS_LABEL_TEXT);
   return `${label} ${ctx.ui.theme.fg("dim", value)}`;
 }
 
@@ -215,9 +211,9 @@ function formatStatuslineBarText(
   ctx: ExtensionContext,
   bar: string,
   background: "userMessageBg" | "toolErrorBg",
-  model?: CodexUsageModel,
+  _model?: CodexUsageModel,
 ): string {
-  const label = ctx.ui.theme.fg("accent", codexUsageStatusLabel(model));
+  const label = ctx.ui.theme.fg("accent", DEFAULT_STATUS_LABEL_TEXT);
   const value = ctx.ui.theme.bg(background, ctx.ui.theme.fg("dim", bar));
   return `${label} ${value}`;
 }
@@ -254,9 +250,9 @@ export function formatStatuslineLoading(
 export function formatStatuslineProblem(
   ctx: ExtensionContext,
   unavailable: boolean,
-  model?: CodexUsageModel,
+  _model?: CodexUsageModel,
 ): string {
-  const label = ctx.ui.theme.fg("accent", codexUsageStatusLabel(model));
+  const label = ctx.ui.theme.fg("accent", DEFAULT_STATUS_LABEL_TEXT);
   const value = unavailable
     ? ctx.ui.theme.fg("muted", "n/a")
     : ctx.ui.theme.fg("error", "error");
