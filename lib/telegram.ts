@@ -1,7 +1,7 @@
 /** Domain: Telegram adapter. Owns: optional provider registration. Excludes: quota state and terminal formatting. */
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isFastEnabled } from "./fast.ts";
-import { isCodexUsageModel, isOpenAICodexModel, type CodexUsageReport } from "./usage.ts";
+import { isCodexUsageModel, type CodexUsageReport } from "./usage.ts";
 import { formatCodexUsageStatusValue } from "./status-format.ts";
 const CODEX_USAGE_EXTENSION_ID = "@llblab/pi-codex-usage";
 const TELEGRAM_STATUS_IMPORT_SPECIFIERS = [
@@ -29,7 +29,7 @@ export function codexUsageTelegramStatusLine(
 ): TelegramStatusLineProviderResult {
   if (!activeModel || !isCodexUsageModel(activeModel)) return undefined;
   const value = report ? formatCodexUsageStatusValue(report, activeModel) : undefined;
-  const fast = isOpenAICodexModel(activeModel) && isFastEnabled(activeModel);
+  const fast = isFastEnabled(activeModel);
   if (!value && !fast) return undefined;
   return { label: "codex", value: value ? `${value}${fast ? " fast" : ""}` : "fast" };
 }

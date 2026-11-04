@@ -180,7 +180,7 @@ If `@llblab/pi-telegram` is loaded with the public status-line provider API, thi
 codex: ██████▀▀▀▀ 6d
 ```
 
-The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline. All supported providers use the `codex` label with the [same account-source boundary](#magpie). When Fast is enabled for an eligible native model, it appends plain-text ` fast`; without a usable quota report it shows `codex: fast`. The preference is reread when the menu is rendered, so toggles and model changes do not depend on a quota refresh. If `pi-telegram` is absent, older, or the active model uses another provider, no Telegram row is added.
+The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline. All supported providers use the `codex` label with the [same account-source boundary](#magpie). When the active model has a priority preference, Telegram appends plain-text ` fast`; without a usable quota report it shows `codex: fast`. This also reflects manually configured preferences for supported proxy models; command dispatch and request priority adaptation remain native-provider-only. The preference is reread when the menu is rendered, so toggles and model changes do not depend on a quota refresh. If `pi-telegram` is absent, older, or the active model uses another provider, no Telegram row is added.
 
 ## Auth
 

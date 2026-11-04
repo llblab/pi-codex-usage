@@ -7,7 +7,7 @@ import test from "node:test";
 
 const run = promisify(execFile);
 
-test("Magpie lifecycle displays Codex quota, ticks resets, hides other models and never enables Fast", async () => {
+test("Magpie lifecycle displays Codex quota, ticks resets, hides other models and preserves native-only Fast dispatch", async () => {
   const dir = mkdtempSync(join(tmpdir(), "codex-magpie-status-"));
   try {
     await run(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
@@ -24,7 +24,7 @@ test("Magpie lifecycle displays Codex quota, ticks resets, hides other models an
       const model = { provider: "magpie", id: "codex/gpt-6.1-sol", name: "Codex" };
       const report = { snapshots: [{ limitId: "codex", secondary: { usedPercent: 33, resetAt: Date.now() + 2500 } }] };
       publish({ report });
-      // Even a manually added Magpie priority override must not activate Fast.
+      // Telegram reflects a manual priority preference; command/request handling stays native-only.
       const configPath = join(dir, "models.json");
       writeFileSync(configPath, JSON.stringify({ providers: { magpie: { modelOverrides: { [model.id]: { serviceTier: "priority" } } } } }));
       const originalConfig = readFileSync(configPath, "utf8");
@@ -54,7 +54,7 @@ test("Magpie lifecycle displays Codex quota, ticks resets, hides other models an
         assert.match(status, /^codex 67% [012]s$/);
         const telegramRow = row(report, model);
         assert.equal(telegramRow.label, "codex");
-        assert.match(telegramRow.value, /^67% [012]s$/);
+        assert.match(telegramRow.value, /^67% [012]s fast$/);
         const deadline = Date.now() + 4000;
         while (!status.endsWith(" 0s") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
         assert.equal(status, "codex 67% 0s");
@@ -77,7 +77,7 @@ test("Magpie lifecycle displays Codex quota, ticks resets, hides other models an
         assert.equal(status, "codex 67% 0s");
         await select({ ...model, id: "codex/gpt-6-astra" });
         assert.equal(status, "codex 67% 0s");
-        assert.equal(row(undefined, model), undefined);
+        assert.deepEqual(row(undefined, model), { label: "codex", value: "fast" });
         writeFileSync(configPath, "invalid json");
         await select(model);
         assert.equal(status, "codex 67% 0s");
