@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added a local Codex subscription monitor for Magpie's `codex/…` models, with `codex (local)` source labels throughout terminal and optional Telegram output. Quota/reset data still comes from the existing local Pi subscription auth / Codex CLI source order; it is not attributed to Magpie's routed account. Other Magpie namespaces stay hidden, proxy credentials never enter quota auth, and Fast remains native-provider-only.
+- Centralized display-only proxy eligibility in a provider/prefix mapping so similar providers can reuse status, countdowns and shared refresh without broadening native auth or Fast. Added regression coverage for mixed-provider sharing, model changes, countdowns, loading/source labels, credential selection and Fast exclusion.
+
 ## 0.13.2: Empty Quota Bar Hotfix
 
 - Aligned quota bars with rounded remaining percentages: when either window rounds to `0%`, its final segment disappears and the whole dual bar uses the error background, while the other half retains its quota. The 5-hour reset countdown follows the same zero boundary; near-full quota still rounds to the nearest 5% step.

@@ -20,7 +20,8 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 - Keeps the last usable bar visible during ordinary refreshes instead of replacing known quota with a loading state
 - Statusline output adapts to the response: weekly-only limits show an explicit remaining percentage and reset countdown, while dual-window limits keep the compact themed bar
 - Models under either `openai-codex` or `openai` show the same primary Codex subscription quota and `codex` status label (not OpenAI API billing limits)
-- When `pi-telegram` is available, the same compact value appears as `codex: <value>` in the `/start` menu status text for either supported provider
+- Magpie `codex/…` models also show the local Codex subscription and reset countdown, explicitly labeled `codex (local)`; other Magpie models stay hidden (see [Magpie](#magpie))
+- When `pi-telegram` is available, the same compact value appears in the `/start` menu status text, with the same source label as the terminal
 - Additional returned quota buckets are ignored
 - Pi subscription auth from `openai` or legacy `openai-codex` is used first
 - Codex CLI app-server remains available as a fallback
@@ -56,6 +57,22 @@ npm run validate
 ```
 
 For explicitly local library experiments, a temporary folder link reads the library's built `dist/`, not TypeScript source directly. Rebuild after source edits and restore the registry dependency/lock before publishing; see [Backlog](./BACKLOG.md).
+
+## Magpie
+
+Selecting provider `magpie` with a nonempty `codex/` model ID, such as `codex/gpt-6.1-sol` or `codex/gpt-6-astra`, enables a **local subscription monitor**:
+
+```text
+codex (local) 67% 7d
+```
+
+`local` means the existing quota source on this machine: Pi's configured `openai` subscription OAuth or legacy `openai-codex` auth, falling back to the locally signed-in Codex CLI. It does **not** identify the account Magpie routes a request to. That account can differ or change through routing, account rotation or fallback. This is useful for monitoring your local subscription while working through Magpie; it does not establish the remaining allowance of the proxy's current account. If multiple local subscription credentials exist, the existing [auth source order](#auth) applies; no account is matched to Magpie.
+
+Magpie exposes `GET /v1/magpie/quotas` with subscription-account quota windows. Inspecting that endpoint established its availability, but did not establish a reliable mapping from the selected Pi model/session to the serving account across multiple accounts or routing/fallback. This extension therefore does not consume that endpoint or assume that Magpie's credentials match a local Codex account. It never resolves or sends Magpie API keys or headers to ChatGPT, and does not read Magpie's private account files.
+
+The local label applies to loading, quota bars, percentages, credits, unavailable/error states, and the optional Telegram row. Without usable local subscription quota, the existing unavailable/error behavior applies; the extension does not substitute an arbitrary Magpie account. `claude/…`, `group/…`, and other Magpie model namespaces do not enable the monitor. `/fast` and request priority adaptation remain limited to `openai` and `openai-codex`, even if a Magpie model has a manually configured priority override.
+
+Display-only proxy adapters are centralized in `CODEX_USAGE_PROXY_PREFIXES` in [`lib/usage.ts`](./lib/usage.ts). A future provider with the same local-monitor semantics needs one provider/prefix entry plus regression tests; terminal display, source labeling, countdowns, Telegram, and shared refresh use that decision together. Auth candidates and Fast registration retain their separate native-provider boundary. Supporting a proxy's actual routed-account quota requires a verified account-selection contract and a separate transport/cache design.
 
 ## Fast mode
 
@@ -139,7 +156,7 @@ codex error
 
 [`index.ts`](./index.ts) is a re-export-only Pi entrypoint; [`lib/extension.ts`](./lib/extension.ts) composes the live extension. [`lib/usage-store.ts`](./lib/usage-store.ts) owns cross-instance quota coordination, [`lib/query.ts`](./lib/query.ts) owns provider requests, [`lib/usage.ts`](./lib/usage.ts) owns quota normalization, [`lib/status.ts`](./lib/status.ts) and [`lib/status-format.ts`](./lib/status-format.ts) own lifecycle and terminal display, [`lib/telegram.ts`](./lib/telegram.ts) adapts the optional Telegram row, and [`lib/fast.ts`](./lib/fast.ts) owns Codex Fast semantics and the native payload bridge; the shared library owns JSONC and command arbitration. Domain tests live under [`tests/`](./tests/) with matching names; integration tests name the domain whose boundary they exercise.
 
-All Codex models and instances coordinate through `~/.pi/agent/tmp/pi-codex-usage/usage.json` (quota percentages and timestamps only, no tokens). The Claude extension uses its own independent file at `~/.pi/agent/tmp/pi-claude-usage/usage.json`.
+All Codex models and instances, including Magpie's explicitly labeled local subscription monitor, coordinate through `~/.pi/agent/tmp/pi-codex-usage/usage.json` (quota percentages and timestamps only, no tokens). The Claude extension uses its own independent file at `~/.pi/agent/tmp/pi-claude-usage/usage.json`.
 
 Previous per-bucket cache directories are no longer read or written; there is no migration. Restart all previously running instances when upgrading to stop them writing the old layout.
 
@@ -157,13 +174,13 @@ Coordination assumes a local filesystem and cooperating instances on the same ma
 
 ## Telegram Status Menu
 
-If `@llblab/pi-telegram` is loaded with the public status-line provider API, this extension registers an optional `/start` menu status row. The row is shown only while the active model uses `openai-codex` or `openai`:
+If `@llblab/pi-telegram` is loaded with the public status-line provider API, this extension registers an optional `/start` menu status row. The row is shown while the active model uses `openai-codex`, `openai`, or a supported Magpie Codex model:
 
 ```text
 codex: ██████▀▀▀▀ 6d
 ```
 
-The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline, always with the `codex` label. When Fast is enabled for the active model, it appends plain-text ` fast`; without a usable quota report it shows `codex: fast`. The preference is reread when the menu is rendered, so toggles and model changes do not depend on a quota refresh. If `pi-telegram` is absent, older, or the active model uses another provider, no Telegram row is added.
+The value is the same compact quota bar plus weekly reset countdown used by the terminal statusline. Native providers use the `codex` label; supported Magpie models use `codex (local)` with the [same account-source boundary](#magpie). When Fast is enabled for an eligible native model, it appends plain-text ` fast`; without a usable quota report it shows `codex: fast`. The preference is reread when the menu is rendered, so toggles and model changes do not depend on a quota refresh. If `pi-telegram` is absent, older, or the active model uses another provider, no Telegram row is added.
 
 ## Auth
 

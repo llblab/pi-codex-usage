@@ -7,6 +7,8 @@ import {
   formatCodexUsageLoadingBar,
   formatCodexUsageStatusValue,
   formatCodexUsageStatusline,
+  formatStatuslineLoading,
+  formatStatuslineProblem,
   formatResetCountdown,
   formatWeeklyResetCountdown,
   nextResetCountdownDelayForRemainingMs,
@@ -29,6 +31,18 @@ const testCtx = {
     },
   },
 } as never;
+
+test("Magpie quota, loading and problems always identify the local subscription source", () => {
+  const model = { provider: "magpie", id: "codex/gpt-6.1-sol", name: "Codex" };
+  const report = { snapshots: [{ limitId: "codex", secondary: { usedPercent: 33 } }] };
+  assert.equal(formatCodexUsageStatusline(report, testCtx, model), "<fg:accent>codex (local)</fg> <fg:dim>67%</fg>");
+  const dual = { snapshots: [{ limitId: "codex", primary: { usedPercent: 25 }, secondary: { usedPercent: 50 } }] };
+  assert.match(formatCodexUsageStatusline(dual, testCtx, model), /^<fg:accent>codex \(local\)<\/fg> <bg:userMessageBg>/);
+  assert.match(formatCodexUsageStatusline({ snapshots: [], credits: { remainingPercent: 81 } }, testCtx, model), /codex \(local\).*81%/);
+  assert.match(formatStatuslineLoading(testCtx, 0, model), /codex \(local\)/);
+  assert.match(formatStatuslineProblem(testCtx, true, model), /codex \(local\).*n\/a/);
+  assert.match(formatStatuslineProblem(testCtx, false, model), /codex \(local\).*error/);
+});
 
 test("Fast suffix uses the same dim theme role as the reset countdown", () => {
   const text = "codex ██████▀▀▀▀ <fg:dim>6d</fg>";

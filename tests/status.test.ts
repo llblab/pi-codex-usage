@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-test("OpenAI and Codex models share one root usage.json and use active subscription auth after claiming", async () => {
+test("OpenAI, Codex and Magpie Codex models share one root usage.json and use local subscription auth after claiming", async () => {
   const dir = mkdtempSync(join(tmpdir(), "codex-shared-refresh-"));
   // Isolate Pi's agent directory and module-level configuration in a child.
   // Fetch is mocked: this test must never query subscription endpoints.
@@ -46,7 +46,9 @@ test("OpenAI and Codex models share one root usage.json and use active subscript
     const instances = Array.from({ length: 6 }, (_, i) => {
       const handlers = new Map();
       let status;
-      const model = { provider: i % 2 === 0 ? "openai" : "openai-codex", id: "model-" + i, name: "Model " + i };
+      const provider = ["magpie", "openai", "openai-codex"][i % 3];
+      const model = { provider, id: provider === "magpie" ? "codex/gpt-6.1-sol" : "model-" + i, name: "Model " + i };
+      const subscription = provider === "magpie" ? { ...model, provider: "openai", id: "local-subscription" } : model;
       const ctx = {
         model,
         ui: {
@@ -54,11 +56,11 @@ test("OpenAI and Codex models share one root usage.json and use active subscript
           setStatus: (_, value) => { status = value; },
         },
         modelRegistry: {
-          getAvailable: () => [model],
-          getAll: () => [model],
+          getAvailable: () => [model, subscription],
+          getAll: () => [model, subscription],
           isUsingOAuth: () => true,
           getApiKeyAndHeaders: async (candidate) => {
-            assert.equal(candidate.provider, model.provider);
+            assert.equal(candidate, subscription);
             return { ok: true, apiKey: "test-token" };
           },
         },
@@ -68,11 +70,11 @@ test("OpenAI and Codex models share one root usage.json and use active subscript
     });
     try {
       instances.forEach(({ handlers, ctx }) => handlers.get("session_start")({}, ctx));
-      const expected = "codex ████████▀⠀";
+      const expected = instances.map(({ ctx }) => (ctx.model.provider === "magpie" ? "codex (local)" : "codex") + " ████████▀⠀");
       const deadline = Date.now() + 5000;
-      while (instances.some(instance => instance.status() !== expected) && Date.now() < deadline)
+      while (instances.some((instance, i) => instance.status() !== expected[i]) && Date.now() < deadline)
         await new Promise(resolve => setTimeout(resolve, 20));
-      assert.deepEqual(instances.map(instance => instance.status()), Array(6).fill(expected));
+      assert.deepEqual(instances.map(instance => instance.status()), expected);
       assert.equal(calls, 1);
       const state = JSON.parse(readFileSync(statePath, "utf8"));
       assert.equal(state.owner, claimedOwner);
@@ -81,7 +83,7 @@ test("OpenAI and Codex models share one root usage.json and use active subscript
       assert.deepEqual(readdirSync(stateDir).sort(), ["mutex.sqlite", "usage.json"]);
       // Switching models or refreshing the session must not create a new bucket or query.
       await Promise.all(instances.map(async ({ handlers, ctx }) => {
-        ctx.model = { ...ctx.model, id: "another-model" };
+        ctx.model = { ...ctx.model, id: ctx.model.provider === "magpie" ? "codex/gpt-6-astra" : "another-model" };
         handlers.get("model_select")({ model: ctx.model }, ctx);
       }));
       await new Promise(resolve => setTimeout(resolve, 30));

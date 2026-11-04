@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReuseCachedReport, isFullyAvailableReport, isUsageUnavailable, normalizeBackendPayload, normalizeAppServerResponse, type UsageQueryError } from "../lib/usage.ts";
+import { canReuseCachedReport, isCodexUsageModel, isFullyAvailableReport, isOpenAICodexModel, isUsageUnavailable, normalizeBackendPayload, normalizeAppServerResponse, type UsageQueryError } from "../lib/usage.ts";
 import { formatCodexUsageStatusValue, nextResetCountdownDelayMs } from "../lib/status-format.ts";
+
+test("Magpie usage eligibility follows the Codex namespace without extending native auth or Fast eligibility", () => {
+  for (const id of ["codex/gpt-6.1-sol", "codex/gpt-6-astra", "codex/future-model"]) {
+    const model = { provider: "magpie", id };
+    assert.equal(isCodexUsageModel(model), true);
+    assert.equal(isOpenAICodexModel(model), false);
+  }
+  for (const id of ["claude/claude-opus", "openai/gpt-6", "group/codex", "codex", "codex/", "codex-impostor/gpt", "Codex/gpt"]) {
+    assert.equal(isCodexUsageModel({ provider: "magpie", id }), false, id);
+  }
+  assert.equal(isCodexUsageModel({ provider: "other", id: "codex/gpt-6.1-sol" }), false);
+  assert.equal(isCodexUsageModel(undefined), false);
+  for (const provider of ["openai", "openai-codex"]) {
+    assert.equal(isCodexUsageModel({ provider, id: "any-model" }), true);
+  }
+});
 
 const usageError = (message: string): UsageQueryError => ({ source: "pi-auth", message });
 const hourMs = 60 * 60 * 1000;

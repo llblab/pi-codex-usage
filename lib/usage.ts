@@ -8,6 +8,19 @@ export const OPENAI_USAGE_PROVIDERS = ["openai-codex", "openai"] as const;
 export function isOpenAICodexModel(model: Pick<PiModel, "provider"> | undefined): boolean {
   return OPENAI_USAGE_PROVIDERS.some((provider) => model?.provider === provider);
 }
+/** Explicit display-only adapters. Adding a proxy never grants it auth or Fast support. */
+const CODEX_USAGE_PROXY_PREFIXES: Readonly<Record<string, string>> = { magpie: "codex/" };
+
+/** Proxy namespaces identify Codex models, not their routed subscription accounts. */
+export function isCodexProxyModel(model: Pick<PiModel, "provider" | "id"> | undefined): boolean {
+  if (!model || !Object.hasOwn(CODEX_USAGE_PROXY_PREFIXES, model.provider)) return false;
+  const prefix = CODEX_USAGE_PROXY_PREFIXES[model.provider]!;
+  return model.id.startsWith(prefix) && model.id.length > prefix.length;
+}
+/** Display eligibility is deliberately broader than native auth and Fast eligibility. */
+export function isCodexUsageModel(model: Pick<PiModel, "provider" | "id"> | undefined): boolean {
+  return isOpenAICodexModel(model) || isCodexProxyModel(model);
+}
 export type UsageSource = "pi-auth" | "codex-app-server";
 export type UsageQueryError = { source: UsageSource; message: string; cause?: unknown };
 export type CodexUsageReport = {

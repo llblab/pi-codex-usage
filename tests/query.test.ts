@@ -92,6 +92,40 @@ test("quota auth can find an OpenAI subscription model in the registry while ano
   } finally { globalThis.fetch = previous; }
 });
 
+for (const id of ["codex/gpt-6.1-sol", "codex/gpt-6-astra"]) test(`Magpie ${id}: quota uses local subscription auth, never proxy or OpenAI API-key credentials`, async () => {
+  const previous = globalThis.fetch;
+  const active = model("magpie", id);
+  const apiKeyModel = model("openai", "api-key-only");
+  const subscription = model("openai-codex", "local-subscription");
+  let requests = 0;
+  const ctx = {
+    model: active,
+    modelRegistry: {
+      getAvailable: () => [active, apiKeyModel],
+      getAll: () => [active, apiKeyModel, subscription],
+      isUsingOAuth: () => false,
+      getApiKeyAndHeaders: async (candidate: TestModel) => {
+        assert.equal(candidate, subscription, "proxy credentials must never be resolved");
+        return { ok: true, apiKey: "local-subscription-fixture", headers: { "ChatGPT-Account-Id": "local-account-fixture" } };
+      },
+    },
+  } as never;
+  globalThis.fetch = async (url, init) => {
+    requests++;
+    assert.equal(url, "https://chatgpt.com/backend-api/wham/usage");
+    assert.deepEqual(init?.headers, {
+      Authorization: "Bearer local-subscription-fixture",
+      "ChatGPT-Account-Id": "local-account-fixture",
+      "User-Agent": "pi-codex-usage",
+    });
+    return response();
+  };
+  try {
+    assert.deepEqual(await queryUsage(ctx, { timeoutMs: 1000 }, active, () => true), expected);
+    assert.equal(requests, 1);
+  } finally { globalThis.fetch = previous; }
+});
+
 test("quota queries recheck leadership after asynchronous OpenAI subscription auth", async () => {
   const previous = globalThis.fetch;
   const active = model("openai");
