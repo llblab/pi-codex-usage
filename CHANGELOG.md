@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Added a local Codex subscription monitor for Magpie's `codex/…` models, with the same `codex` label as native providers throughout terminal and optional Telegram output. Quota/reset data still comes from the existing local Pi subscription auth / Codex CLI source order; it is not attributed to Magpie's routed account. Other Magpie namespaces stay hidden, proxy credentials never enter quota auth, and Fast remains native-provider-only.
-- Centralized display-only proxy eligibility in a provider/prefix mapping so similar providers can reuse status, countdowns and shared refresh without broadening native auth or Fast. Added regression coverage for mixed-provider sharing, model changes, countdowns, loading labels, credential selection and Fast exclusion.
+- Added a local Codex subscription monitor for Magpie's `codex/…` models, with the same `codex` label as native providers throughout terminal and optional Telegram output. Quota/reset data still comes from the existing local Pi subscription auth / Codex CLI source order; it is not attributed to Magpie's routed account. Other Magpie namespaces stay hidden, and proxy credentials never enter quota auth. Fast command dispatch, terminal suffixes and request adaptation remain native-provider-only; Telegram continues to reflect the active model's priority preference, including manually configured Magpie preferences.
+- Centralized display-only proxy eligibility in a provider/prefix mapping so similar providers can reuse status, countdowns and shared refresh without broadening native auth or Fast command/request handling. Added regression coverage for mixed-provider sharing, model changes, countdowns, loading labels, credential selection, Telegram priority preferences and native-only Fast dispatch.
 
 ## 0.13.2: Empty Quota Bar Hotfix
 

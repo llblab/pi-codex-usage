@@ -93,8 +93,8 @@ async function queryViaPiAuth(
 async function resolvePiCodexAuth(
   ctx: ExtensionContext,
 ): Promise<{ headers: Record<string, string> } | undefined> {
-  // Proxy display monitors this same local subscription stream. Only native
-  // subscription providers are auth candidates; never resolve a proxy API key.
+  // Proxy models display local subscription quota. Auth candidates remain
+  // openai/openai-codex; proxy credentials are not resolved here.
   const models = codexAuthCandidateModels(ctx);
   const errors: string[] = [];
 

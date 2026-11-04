@@ -21,7 +21,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 - Statusline output adapts to the response: weekly-only limits show an explicit remaining percentage and reset countdown, while dual-window limits keep the compact themed bar
 - Models under either `openai-codex` or `openai` show the same primary Codex subscription quota and `codex` status label (not OpenAI API billing limits)
 - Magpie `codex/…` models also show the local Codex subscription and reset countdown with the same `codex` label; other Magpie models stay hidden (see [Magpie](#magpie))
-- When `pi-telegram` is available, the same compact value appears in the `/start` menu status text, with the same source label as the terminal
+- When `pi-telegram` is available, the same compact value appears in the `/start` menu status text, with the same `codex` label as the terminal
 - Additional returned quota buckets are ignored
 - Pi subscription auth from `openai` or legacy `openai-codex` is used first
 - Codex CLI app-server remains available as a fallback
@@ -60,17 +60,17 @@ For explicitly local library experiments, a temporary folder link reads the libr
 
 ## Magpie
 
-Selecting provider `magpie` with a nonempty `codex/` model ID, such as `codex/gpt-6.1-sol` or `codex/gpt-6-astra`, enables a **local subscription monitor**:
+Selecting provider `magpie` with a model ID that starts with `codex/` and has a nonempty model name after the slash, such as `codex/gpt-6.1-sol` or `codex/gpt-6-astra`, enables a **local subscription monitor**:
 
 ```text
 codex 67% 7d
 ```
 
-The displayed quota comes from the existing source on this machine: Pi's configured `openai` subscription OAuth or legacy `openai-codex` auth, falling back to the locally signed-in Codex CLI. It does **not** identify the account Magpie routes a request to. That account can differ or change through routing, account rotation or fallback. This is useful for monitoring your local subscription while working through Magpie; it does not establish the remaining allowance of the proxy's current account. If multiple local subscription credentials exist, the existing [auth source order](#auth) applies; no account is matched to Magpie.
+The displayed quota comes from Pi's configured `openai` subscription OAuth or legacy `openai-codex` auth, falling back to the locally signed-in Codex CLI. It monitors a local subscription, which can differ from the account Magpie selects through routing, rotation or fallback. No account is matched to Magpie; if multiple local credentials exist, the existing [auth candidate order](#auth) applies.
 
-Magpie exposes `GET /v1/magpie/quotas` with subscription-account quota windows. Inspecting that endpoint established its availability, but did not establish a reliable mapping from the selected Pi model/session to the serving account across multiple accounts or routing/fallback. This extension therefore does not consume that endpoint or assume that Magpie's credentials match a local Codex account. It never resolves or sends Magpie API keys or headers to ChatGPT, and does not read Magpie's private account files.
+The inspected Magpie gateway exposes `GET /v1/magpie/quotas` with per-account quota windows. This extension does not consume that endpoint or implement a mapping from the selected Pi model/session to Magpie's serving account. It never resolves Magpie API keys or headers for quota requests and does not read Magpie's private account files.
 
-The same `codex` label applies to all supported providers during loading, quota bars, percentages, credits, unavailable/error states, and the optional Telegram row. The label does not identify Magpie's serving account. Without usable local subscription quota, the existing unavailable/error behavior applies; the extension does not substitute an arbitrary Magpie account. `claude/…`, `group/…`, and other Magpie model namespaces do not enable the monitor. `/fast` and request priority adaptation remain limited to `openai` and `openai-codex`, even if a Magpie model has a manually configured priority override.
+The same `codex` label applies to all supported providers during loading, quota bars, percentages, credits, unavailable/error states, and the optional Telegram row. The label does not identify Magpie's serving account. Without usable local subscription quota, the existing unavailable/error behavior applies; the extension does not substitute an arbitrary Magpie account. `claude/…`, `group/…`, and other Magpie model namespaces do not enable the monitor. `/fast`, terminal `fast` suffixes and request priority adaptation remain limited to `openai` and `openai-codex`. Telegram still reads the active model's preference directly, so a manually configured Magpie `serviceTier: "priority"` can appear as `fast` in Telegram without enabling this extension's command or request adaptation for Magpie.
 
 Display-only proxy adapters are centralized in `CODEX_USAGE_PROXY_PREFIXES` in [`lib/usage.ts`](./lib/usage.ts). A future provider with the same local-monitor semantics needs one provider/prefix entry plus regression tests; terminal display, countdowns, Telegram, and shared refresh use that decision together. Auth candidates and Fast registration retain their separate native-provider boundary. Supporting a proxy's actual routed-account quota requires a verified account-selection contract and a separate transport/cache design.
 
@@ -186,7 +186,7 @@ The value is the same compact quota bar plus weekly reset countdown used by the 
 
 The extension tries usage sources in this order:
 
-1. Pi's subscription auth from `openai` or legacy `openai-codex` (active model first)
+1. Pi's subscription auth from `openai` or legacy `openai-codex`: active native model first, then models from `getAvailable()`, then `getAll()`, deduplicated by provider/model. `openai` candidates without subscription OAuth are skipped. An active Magpie model is never an auth candidate; local native models are selected from those registry lists.
 2. `codex app-server --listen stdio://`
 
 On Windows, the fallback resolves the native `codex.exe` from PATH or from the npm platform package behind a `codex.cmd` shim, then launches it directly without a shell. If Codex is missing, install it with `npm install -g @openai/codex@latest` and restart Pi so it inherits the updated PATH.
