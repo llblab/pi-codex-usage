@@ -98,7 +98,7 @@ export function createCodexUsageStatus(pi: ExtensionAPI) {
     const modelChanged = loadingModel?.provider !== model?.provider || loadingModel?.id !== model?.id;
     loadingModel = model;
     if (statuslineLoadingTimer) {
-      if (modelChanged) setCodexStatus(ctx, formatStatuslineLoading(ctx, statuslineLoadingFrame, model), model);
+      if (modelChanged && lastStatusText !== undefined) setCodexStatus(ctx, lastStatusText, model);
       return;
     }
     statuslineLoadingFrame = Math.random() < 0.5 ? 0 : DUAL_BAR_WIDTH * 2 - 1;
