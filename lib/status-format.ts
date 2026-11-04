@@ -7,9 +7,8 @@ const HOUR_MS = 60 * MINUTE_MS;
 const HOUR_TENTH_MS = 6 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const DAY_TENTH_MS = 144 * MINUTE_MS;
-export const DEFAULT_STATUS_LABEL_TEXT = "codex";
+const DEFAULT_STATUS_LABEL_TEXT = "codex";
 const DUAL_BAR_WIDTH = 10;
-
 const DUAL_BAR_CHARS = [
   "⠀",
   "▘",
