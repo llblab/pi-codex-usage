@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,7 +12,9 @@ const run = promisify(execFile);
 test("OpenAI and Codex models share one root usage.json and use active subscription auth after claiming", async () => {
   const dir = mkdtempSync(join(tmpdir(), "codex-shared-refresh-"));
   // Isolate Pi's agent directory and module-level configuration in a child.
-  // Fetch is mocked: this test must never query subscription endpoints.
+  // Fetch is mocked and Codex CLI auth is isolated: this test must never query subscription endpoints.
+  const codexHome = join(dir, "codex-home");
+  mkdirSync(codexHome, { recursive: true });
   const script = `
     import assert from "node:assert/strict";
     import { readFileSync, readdirSync } from "node:fs";
@@ -59,7 +61,14 @@ test("OpenAI and Codex models share one root usage.json and use active subscript
           isUsingOAuth: () => true,
           getApiKeyAndHeaders: async (candidate) => {
             assert.equal(candidate.provider, model.provider);
-            return { ok: true, apiKey: "test-token" };
+            return {
+              ok: true,
+              apiKey: "test-token",
+              headers: {
+                Authorization: "Bearer test-token",
+                "ChatGPT-Account-Id": "account-fixture",
+              },
+            };
           },
         },
       };
@@ -96,7 +105,7 @@ test("OpenAI and Codex models share one root usage.json and use active subscript
     const { stdout } = await run(
       process.execPath,
       ["--experimental-strip-types", "--input-type=module", "-e", script],
-      { env: { ...process.env, PI_CODING_AGENT_DIR: dir }, timeout: 15_000 },
+      { env: { ...process.env, PI_CODING_AGENT_DIR: dir, CODEX_HOME: codexHome }, timeout: 15_000 },
     );
     assert.match(stdout, /shared refresh ok/);
   } finally {

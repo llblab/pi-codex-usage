@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.13.3: Direct Pi/Codex Auth Hotfix
+## 0.13.4: Direct Pi/Codex Auth Hotfix
 
 - Fixed the primary quota request falling back to Codex CLI app-server when Pi uses the newer `openai` Sign in with ChatGPT login. The extension recognizes both Pi OpenAI OAuth methods, records the newer API-scoped token as unavailable for `/wham/usage`, and uses legacy-compatible Pi or local Codex CLI credentials for the direct request before the preserved app-server fallback.
 - Compatible credentials now supply `ChatGPT-Account-Id` from Pi headers or the token claim; API keys, non-ChatGPT CLI credentials, and expired tokens are skipped, and JWTs in endpoint error bodies are redacted. The app-server fallback and Windows executable resolution are unchanged.

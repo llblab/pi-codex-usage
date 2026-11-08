@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
@@ -17,6 +17,8 @@ if (!claude) scenarios.push("retry");
 for (const scenario of scenarios) {
   test(`disk leadership fences the ${scenario} boundary`, async () => {
     const dir = mkdtempSync(join(tmpdir(), "usage-leadership-"));
+    const codexHome = join(dir, "codex-home");
+    mkdirSync(codexHome, { recursive: true });
     const script = `
       import assert from "node:assert/strict";
       import childProcess from "node:child_process";
@@ -76,7 +78,16 @@ for (const scenario of scenarios) {
           getApiKeyAndHeaders: async () => {
             authCalls++;
             if (scenario === "auth") replaceClaim();
-            return { ok: true, apiKey: claude ? "sk-ant-oat-test" : "test-token" };
+            return claude
+              ? { ok: true, apiKey: "sk-ant-oat-test" }
+              : {
+                  ok: true,
+                  apiKey: "test-token",
+                  headers: {
+                    Authorization: "Bearer test-token",
+                    "ChatGPT-Account-Id": "account-fixture",
+                  },
+                };
           },
         },
       };
@@ -119,7 +130,7 @@ for (const scenario of scenarios) {
       const { stdout } = await run(
         process.execPath,
         ["--experimental-strip-types", "--input-type=module", "-e", script],
-        { env: { ...process.env, PI_CODING_AGENT_DIR: dir }, timeout: 15_000 },
+        { env: { ...process.env, PI_CODING_AGENT_DIR: dir, CODEX_HOME: codexHome }, timeout: 15_000 },
       );
       assert.match(stdout, /leadership fenced/);
     } finally {
