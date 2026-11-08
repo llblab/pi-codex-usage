@@ -22,7 +22,7 @@ This repository is a minimal fork of [`narumiruna/pi-extensions/extensions/pi-co
 - Models under either `openai-codex` or `openai` show the same primary Codex subscription quota and `codex` status label (not OpenAI API billing limits)
 - When `pi-telegram` is available, the same compact value appears as `codex: <value>` in the `/start` menu status text for either supported provider
 - Additional returned quota buckets are ignored
-- Pi subscription auth from `openai` or legacy `openai-codex` is used first
+- Both Pi OpenAI OAuth methods are detected; legacy-compatible Pi/Codex CLI credentials are used for the direct quota request
 - Codex CLI app-server remains available as a fallback
 - Missing auth, subscription, plan, or quota windows are shown as `n/a`, not as an error
 - Successful updates briefly redraw the bar only when a 5% segment changes
@@ -137,7 +137,7 @@ codex error
 
 ## Shared Refresh
 
-[`index.ts`](./index.ts) is a re-export-only Pi entrypoint; [`lib/extension.ts`](./lib/extension.ts) composes the live extension. [`lib/usage-store.ts`](./lib/usage-store.ts) owns cross-instance quota coordination, [`lib/query.ts`](./lib/query.ts) owns provider requests, [`lib/usage.ts`](./lib/usage.ts) owns quota normalization, [`lib/status.ts`](./lib/status.ts) and [`lib/status-format.ts`](./lib/status-format.ts) own lifecycle and terminal display, [`lib/telegram.ts`](./lib/telegram.ts) adapts the optional Telegram row, and [`lib/fast.ts`](./lib/fast.ts) owns Codex Fast semantics and the native payload bridge; the shared library owns JSONC and command arbitration. Domain tests live under [`tests/`](./tests/) with matching names; integration tests name the domain whose boundary they exercise.
+[`index.ts`](./index.ts) is a re-export-only Pi entrypoint; [`lib/extension.ts`](./lib/extension.ts) composes the live extension. [`lib/usage-store.ts`](./lib/usage-store.ts) owns cross-instance quota coordination, [`lib/query.ts`](./lib/query.ts) owns auth candidate discovery and provider requests, [`lib/usage.ts`](./lib/usage.ts) owns quota normalization, [`lib/status.ts`](./lib/status.ts) and [`lib/status-format.ts`](./lib/status-format.ts) own lifecycle and terminal display, [`lib/telegram.ts`](./lib/telegram.ts) adapts the optional Telegram row, and [`lib/fast.ts`](./lib/fast.ts) owns Codex Fast semantics and the native payload bridge; the shared library owns JSONC and command arbitration. Domain tests live under [`tests/`](./tests/) with matching names; integration tests name the domain whose boundary they exercise.
 
 All Codex models and instances coordinate through `~/.pi/agent/tmp/pi-codex-usage/usage.json` (quota percentages and timestamps only, no tokens). The Claude extension uses its own independent file at `~/.pi/agent/tmp/pi-claude-usage/usage.json`.
 
@@ -169,12 +169,16 @@ The value is the same compact quota bar plus weekly reset countdown used by the 
 
 The extension tries usage sources in this order:
 
-1. Pi's subscription auth from `openai` or legacy `openai-codex` (active model first)
-2. `codex app-server --listen stdio://`
+1. Pi's legacy `openai-codex` subscription OAuth, resolved through `modelRegistry.getApiKeyAndHeaders()`
+2. Pi's newer `openai` Sign in with ChatGPT OAuth, when its token carries a Codex account claim
+3. The local Codex CLI `auth.json` ChatGPT credential, read directly without spawning a process
+4. `codex app-server --listen stdio://`
+
+The `/wham/usage` endpoint accepts legacy Codex-shaped OAuth tokens and rejects the newer `openai` Sign in with ChatGPT token: it is scoped for `api.openai.com/v1`, has no `chatgpt_account_id` claim, and returns 401 even when an account header is supplied. The extension detects that token, records it as unavailable, and does not send it to the quota endpoint. Both Pi login methods are recognized; use `/login openai-codex` for a directly usable Pi credential, or keep the Codex CLI logged in for the direct local auth source. Compatible tokens get `ChatGPT-Account-Id` from Pi headers or the token's `https://api.openai.com/auth` claim. The Codex CLI source reads `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), accepts ChatGPT-mode credentials (`auth_mode: "chatgpt"` or legacy files without a mode), skips expired tokens, and never persists tokens.
 
 On Windows, the fallback resolves the native `codex.exe` from PATH or from the npm platform package behind a `codex.cmd` shim, then launches it directly without a shell. If Codex is missing, install it with `npm install -g @openai/codex@latest` and restart Pi so it inherits the updated PATH.
 
-Selecting an `openai` model enables the status and Fast toggle, and its ChatGPT subscription OAuth credentials can fetch the quota directly; a legacy `openai-codex` provider is not required. The extension uses Pi's resolved auth headers/token, checks `modelRegistry.isUsingOAuth` before using `openai` credentials, and keeps the Codex CLI fallback. OpenAI API keys are not ChatGPT subscription auth and do not expose these quotas; `openai` API-key credentials are skipped, not sent to the ChatGPT quota endpoint. Without subscription auth/quota, the quota status is `n/a` when both sources report an unavailable state. Fast works independently of subscription auth.
+Selecting an `openai` model enables the status and Fast toggle. The extension uses Pi's resolved auth headers/token, checks `modelRegistry.isUsingOAuth` before using `openai` credentials, and keeps the Codex CLI fallback. OpenAI API keys are not ChatGPT subscription auth and do not expose these quotas; `openai` API-key credentials are skipped, not sent to the ChatGPT quota endpoint. Without subscription auth/quota, the quota status is `n/a` when all sources report an unavailable state. Fast works independently of subscription auth.
 
 ## License
 

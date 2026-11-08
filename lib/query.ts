@@ -1,16 +1,31 @@
-/** Domain: quota transport. Owns: Pi auth, Codex app-server fallback and errors. Excludes: shared leadership and UI. */
+/** Domain: quota transport. Owns: Pi/Codex auth candidates, guarded HTTP/RPC quota requests and errors. Excludes: shared leadership and UI. */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { assertObject, errorMessage, isOpenAICodexModel, normalizeAppServerResponse, normalizeBackendPayload, parseJsonObject, selectUsageSnapshot, type AppServerRateLimitResponse, type CodexUsageModel, type CodexUsageReport, type RateLimitStatusPayload, type UsageQueryError } from "./usage.ts";
+import { assertObject, errorMessage, isOpenAICodexModel, normalizeAppServerResponse, normalizeBackendPayload, parseJsonObject, selectUsageSnapshot, type AppServerRateLimitResponse, type CodexUsageModel, type CodexUsageReport, type RateLimitStatusPayload, type UsageQueryError, type UsageSource } from "./usage.ts";
 const CODEX_USAGE_LIMIT_ID = "codex";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const CODEX_USAGE_ACCOUNT_HEADER = "ChatGPT-Account-Id";
+const OPENAI_AUTH_CLAIM = "https://api.openai.com/auth";
+const LEGACY_PROVIDER = "openai-codex";
+const NEW_PROVIDER = "openai";
+const USER_AGENT = "pi-codex-usage";
+const TOKEN_EXPIRY_MARGIN_MS = 60_000;
 const MAX_ERROR_BODY_CHARS = 600;
 type PiModel = NonNullable<ExtensionContext["model"]>;
 type QueryUsageOptions = { timeoutMs: number };
 export type QueryUsageResult = { ok: true; report: CodexUsageReport } | { ok: false; errors: UsageQueryError[] };
+type QuotaAuthCandidate = {
+  source: UsageSource;
+  headers: Record<string, string>;
+};
+type QuotaAuthResolution = {
+  candidates: QuotaAuthCandidate[];
+  errors: UsageQueryError[];
+};
 type RpcResponse = {
   id?: unknown;
   result?: unknown;
@@ -29,15 +44,15 @@ export async function queryUsage(
   mayQuery: () => boolean,
 ): Promise<QueryUsageResult | undefined> {
   const errors: UsageQueryError[] = [];
-  const sources = ["pi-auth", "codex-app-server"] as const;
+  if (!mayQuery()) return undefined;
+  const auth = await resolveQuotaAuthCandidates(ctx);
+  errors.push(...auth.errors);
+  if (!mayQuery()) return undefined;
 
-  for (const source of sources) {
+  for (const candidate of auth.candidates) {
     if (!mayQuery()) return undefined;
     try {
-      const report =
-        source === "pi-auth"
-          ? await queryViaPiAuth(ctx, options.timeoutMs, mayQuery)
-          : await queryViaCodexAppServer(options.timeoutMs, mayQuery);
+      const report = await queryViaQuotaAuth(candidate, options.timeoutMs, mayQuery);
       if (!report) return undefined;
       if (
         selectUsageSnapshot(report, CODEX_USAGE_LIMIT_ID) ||
@@ -46,33 +61,44 @@ export async function queryUsage(
         return { ok: true, report };
       }
       errors.push({
-        source,
-        message: `${source} returned no displayable codex rate-limit windows`,
+        source: candidate.source,
+        message: `${candidate.source} returned no displayable rate-limit windows`,
       });
     } catch (cause) {
-      errors.push({ source, message: errorMessage(cause), cause });
+      errors.push({ source: candidate.source, message: errorMessage(cause), cause });
     }
+  }
+
+  if (!mayQuery()) return undefined;
+  try {
+    const report = await queryViaCodexAppServer(options.timeoutMs, mayQuery);
+    if (!report) return undefined;
+    if (
+      selectUsageSnapshot(report, CODEX_USAGE_LIMIT_ID) ||
+      report.credits
+    ) {
+      return { ok: true, report };
+    }
+    errors.push({
+      source: "codex-app-server",
+      message: "codex-app-server returned no displayable rate-limit windows",
+    });
+  } catch (cause) {
+    errors.push({ source: "codex-app-server", message: errorMessage(cause), cause });
   }
 
   return { ok: false, errors };
 }
 
-async function queryViaPiAuth(
-  ctx: ExtensionContext,
+async function queryViaQuotaAuth(
+  candidate: QuotaAuthCandidate,
   timeoutMs: number,
   mayQuery: () => boolean,
 ): Promise<CodexUsageReport | undefined> {
-  const auth = await resolvePiCodexAuth(ctx);
-  if (!auth) {
-    throw new Error(
-      "No Pi OpenAI Codex subscription auth was available. Use an openai or openai-codex subscription model or run /login for OpenAI ChatGPT.",
-    );
-  }
-
   if (!mayQuery()) return undefined;
   const response = await fetchWithTimeout(
     CODEX_USAGE_URL,
-    { headers: auth.headers },
+    { headers: candidate.headers },
     timeoutMs,
   );
   const text = await response.text();
@@ -86,43 +112,93 @@ async function queryViaPiAuth(
   return normalizeBackendPayload(
     payload as RateLimitStatusPayload,
     Date.now(),
-    "pi-auth",
+    candidate.source,
   );
 }
 
-async function resolvePiCodexAuth(
-  ctx: ExtensionContext,
-): Promise<{ headers: Record<string, string> } | undefined> {
-  const models = codexAuthCandidateModels(ctx);
-  const errors: string[] = [];
+// --- Auth Candidates ---
 
-  for (const model of models) {
-    if (model.provider === "openai" && !ctx.modelRegistry.isUsingOAuth(model)) continue;
-    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+export async function resolveQuotaAuthCandidates(
+  ctx: ExtensionContext,
+  env: NodeJS.ProcessEnv = process.env,
+  now = Date.now(),
+): Promise<QuotaAuthResolution> {
+  const candidates: QuotaAuthCandidate[] = [];
+  const errors: UsageQueryError[] = [];
+  const seenTokens = new Set<string>();
+
+  for (const model of orderedCodexAuthModels(ctx)) {
+    if (model.provider === NEW_PROVIDER && !ctx.modelRegistry.isUsingOAuth(model)) continue;
+    const source: UsageSource = model.provider === NEW_PROVIDER
+      ? "pi-auth-openai"
+      : "pi-auth-openai-codex";
+    let auth;
+    try {
+      auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    } catch (cause) {
+      errors.push({ source, message: errorMessage(cause) });
+      continue;
+    }
     if (!auth.ok) {
-      errors.push(auth.error);
+      errors.push({ source, message: auth.error });
       continue;
     }
 
-    const headers: Record<string, string> = {};
-    for (const [name, value] of Object.entries(auth.headers ?? {})) {
-      if (value !== null) headers[name] = value;
-    }
-    if (!hasHeader(headers, "Authorization") && auth.apiKey) {
+    const headers = stringHeaders(auth.headers);
+    if (!hasHeader(headers, "Authorization") && auth.apiKey)
       headers.Authorization = `Bearer ${auth.apiKey}`;
+    const token = bearerToken(headers);
+    if (!token || token.startsWith("sk-")) continue;
+    const accountId = headerValue(headers, CODEX_USAGE_ACCOUNT_HEADER) ?? chatgptAccountId(token);
+    if (model.provider === NEW_PROVIDER && !accountId) {
+      errors.push({
+        source,
+        message: "New Pi OpenAI OAuth credential is not accepted by the Codex usage endpoint",
+      });
+      continue;
     }
-    if (!hasHeader(headers, "User-Agent")) {
-      headers["User-Agent"] = "pi-codex-usage";
+    if (isExpiredToken(token, now)) {
+      errors.push({ source, message: "Pi OpenAI subscription token has expired" });
+      continue;
     }
-    if (hasHeader(headers, "Authorization")) {
-      return { headers };
-    }
+    if (accountId && !hasHeader(headers, CODEX_USAGE_ACCOUNT_HEADER))
+      headers[CODEX_USAGE_ACCOUNT_HEADER] = accountId;
+    if (!hasHeader(headers, "User-Agent")) headers["User-Agent"] = USER_AGENT;
+    if (!hasHeader(headers, "Accept")) headers.Accept = "application/json";
+    if (seenTokens.has(token)) continue;
+    seenTokens.add(token);
+    candidates.push({ source, headers });
   }
 
-  if (errors.length > 0) {
-    throw new Error(errors.join("; "));
+  const codexCli = readCodexCliAuth(env, now);
+  if (codexCli) {
+    const token = bearerToken(codexCli.headers);
+    if (token && !seenTokens.has(token)) {
+      seenTokens.add(token);
+      candidates.push(codexCli);
+    }
+  } else {
+    errors.push({
+      source: "codex-cli-auth",
+      message: "No usable Codex CLI ChatGPT auth was available",
+    });
   }
-  return undefined;
+
+  if (candidates.length === 0 && errors.length === 0) {
+    errors.push({
+      source: "pi-auth",
+      message: "No Pi OpenAI Codex subscription auth was available. Use an openai or openai-codex subscription model or run /login for OpenAI ChatGPT.",
+    });
+  }
+  return { candidates, errors };
+}
+
+function orderedCodexAuthModels(ctx: ExtensionContext): PiModel[] {
+  const models = codexAuthCandidateModels(ctx);
+  return [
+    ...models.filter((model) => model.provider === LEGACY_PROVIDER),
+    ...models.filter((model) => model.provider === NEW_PROVIDER),
+  ];
 }
 
 function codexAuthCandidateModels(ctx: ExtensionContext): PiModel[] {
@@ -140,6 +216,114 @@ function codexAuthCandidateModels(ctx: ExtensionContext): PiModel[] {
   for (const model of ctx.modelRegistry.getAvailable()) add(model);
   for (const model of ctx.modelRegistry.getAll()) add(model);
   return candidates;
+}
+
+function readCodexCliAuth(
+  env: NodeJS.ProcessEnv,
+  now: number,
+): QuotaAuthCandidate | undefined {
+  try {
+    const payload: unknown = JSON.parse(readFileSync(codexAuthPath(env), "utf8"));
+    if (!isRecord(payload)) return undefined;
+    if (typeof payload.auth_mode === "string" && payload.auth_mode !== "chatgpt")
+      return undefined;
+    const tokens = isRecord(payload.tokens) ? payload.tokens : undefined;
+    const accessToken = typeof tokens?.access_token === "string"
+      ? tokens.access_token
+      : undefined;
+    if (!accessToken || accessToken.startsWith("sk-")) return undefined;
+    if (isExpiredToken(accessToken, now)) return undefined;
+    const accountId = stringValue(tokens?.account_id)
+      ?? chatgptAccountId(accessToken)
+      ?? (typeof tokens?.id_token === "string"
+        ? chatgptAccountId(tokens.id_token)
+        : undefined);
+    if (!accountId) return undefined;
+    return {
+      source: "codex-cli-auth",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        [CODEX_USAGE_ACCOUNT_HEADER]: accountId,
+        "User-Agent": USER_AGENT,
+        Accept: "application/json",
+      },
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function codexAuthPath(env: NodeJS.ProcessEnv): string {
+  const configured = typeof env.CODEX_HOME === "string" ? env.CODEX_HOME.trim() : "";
+  if (!configured) return join(homedir(), ".codex", "auth.json");
+  const root = configured === "~"
+    ? homedir()
+    : configured.startsWith("~/") || configured.startsWith("~\\")
+      ? join(homedir(), configured.slice(2))
+      : configured;
+  return join(root, "auth.json");
+}
+
+function stringHeaders(
+  headers: Record<string, string | null> | undefined,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value !== null) result[name] = value;
+  }
+  return result;
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  return headerValue(headers, name) !== undefined;
+}
+
+function headerValue(
+  headers: Record<string, string>,
+  name: string,
+): string | undefined {
+  const expected = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === expected && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function bearerToken(headers: Record<string, string>): string | undefined {
+  const value = headerValue(headers, "Authorization");
+  return /^Bearer\s+(.+)$/iu.exec(value ?? "")?.[1]?.trim();
+}
+
+function chatgptAccountId(token: string): string | undefined {
+  const payload = decodeJwtPayload(token);
+  const authClaim = payload?.[OPENAI_AUTH_CLAIM];
+  return stringValue(isRecord(authClaim) ? authClaim.chatgpt_account_id : undefined);
+}
+
+function isExpiredToken(token: string, now: number): boolean {
+  const payload = decodeJwtPayload(token);
+  const exp = payload?.exp;
+  if (typeof exp !== "number" || !Number.isFinite(exp)) return false;
+  return exp * 1000 <= now + TOKEN_EXPIRY_MARGIN_MS;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
+  const encoded = token.split(".")[1];
+  if (!encoded) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function fetchWithTimeout(
@@ -390,17 +574,12 @@ class CodexAppServerClient {
 }
 
 
-function hasHeader(headers: Record<string, string>, name: string): boolean {
-  return Object.keys(headers).some(
-    (key) => key.toLowerCase() === name.toLowerCase(),
-  );
-}
-
 function redactErrorBody(body: string): string {
   return truncateEnd(
     body
       .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>")
       .replace(/"access_token"\s*:\s*"[^"]+"/gi, '"access_token":"<redacted>"')
+      .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "<redacted>")
       .trim(),
     MAX_ERROR_BODY_CHARS,
   );

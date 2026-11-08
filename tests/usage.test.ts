@@ -207,6 +207,14 @@ test("classifies n/a only when all query failures are unavailable states", () =>
 
   assert.equal(
     isUsageUnavailable([
+      { source: "pi-auth-openai", message: "New Pi OpenAI OAuth credential is not accepted by the Codex usage endpoint" },
+      { source: "codex-cli-auth", message: "No usable Codex CLI ChatGPT auth was available" },
+    ]),
+    true,
+  );
+
+  assert.equal(
+    isUsageUnavailable([
       usageError("No Pi OpenAI Codex subscription auth was available."),
       {
         source: "codex-app-server",

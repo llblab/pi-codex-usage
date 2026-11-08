@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.3: Direct Pi/Codex Auth Hotfix
+
+- Fixed the primary quota request falling back to Codex CLI app-server when Pi uses the newer `openai` Sign in with ChatGPT login. The extension recognizes both Pi OpenAI OAuth methods, records the newer API-scoped token as unavailable for `/wham/usage`, and uses legacy-compatible Pi or local Codex CLI credentials for the direct request before the preserved app-server fallback.
+- Compatible credentials now supply `ChatGPT-Account-Id` from Pi headers or the token claim; API keys, non-ChatGPT CLI credentials, and expired tokens are skipped, and JWTs in endpoint error bodies are redacted. The app-server fallback and Windows executable resolution are unchanged.
+- No configuration changes or cache migration are required; restart Pi to load the updated extension.
+
 ## 0.13.2: Empty Quota Bar Hotfix
 
 - Aligned quota bars with rounded remaining percentages: when either window rounds to `0%`, its final segment disappears and the whole dual bar uses the error background, while the other half retains its quota. The 5-hour reset countdown follows the same zero boundary; near-full quota still rounds to the nearest 5% step.

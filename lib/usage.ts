@@ -8,7 +8,12 @@ export const OPENAI_USAGE_PROVIDERS = ["openai-codex", "openai"] as const;
 export function isOpenAICodexModel(model: Pick<PiModel, "provider"> | undefined): boolean {
   return OPENAI_USAGE_PROVIDERS.some((provider) => model?.provider === provider);
 }
-export type UsageSource = "pi-auth" | "codex-app-server";
+export type UsageSource =
+  | "pi-auth"
+  | "pi-auth-openai"
+  | "pi-auth-openai-codex"
+  | "codex-cli-auth"
+  | "codex-app-server";
 export type UsageQueryError = { source: UsageSource; message: string; cause?: unknown };
 export type CodexUsageReport = {
   snapshots: NormalizedRateLimitSnapshot[];
@@ -283,6 +288,9 @@ function isUnavailableError(error: UsageQueryError): boolean {
   const message = error.message.toLowerCase();
   return (
     message.includes("no pi openai codex subscription auth") ||
+    message.includes("not accepted by the codex usage endpoint") ||
+    message.includes("no usable codex cli chatgpt auth") ||
+    message.includes("subscription token has expired") ||
     message.includes("no displayable rate-limit windows") ||
     message.includes("returned no displayable rate-limit windows") ||
     message.includes("returned 401") ||
